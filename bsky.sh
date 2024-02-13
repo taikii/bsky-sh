@@ -40,6 +40,38 @@ function _profile() {
 	done < <(cat -)
 }
 
+function _follows() {
+	local _ _user _json _cursor
+
+	while read _user _
+	do
+		while [[ ${_cursor} != "null" ]]
+			do
+			_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.graph.getFollows?actor='"${_user}"'&cursor='"${_cursor}" \
+				-H 'Accept: application/json' \
+				-H 'Authorization: Bearer '"${_BSKY_ACCESS_JWT}") || return
+			echo "${_json}" | jq -r '.follows[] | [.did, .handle] | @tsv' || return
+			_cursor=$(echo "${_json}" | jq -r '.cursor') || return
+		done
+	done < <(cat -)
+}
+
+function _followers() {
+	local _ _user _json _cursor
+
+	while read _user _
+	do
+		while [[ ${_cursor} != "null" ]]
+			do
+			_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.graph.getFollowers?actor='"${_user}"'&cursor='"${_cursor}" \
+				-H 'Accept: application/json' \
+				-H 'Authorization: Bearer '"${_BSKY_ACCESS_JWT}") || return
+			echo "${_json}" | jq -r '.followers[] | [.did, .handle] | @tsv' || return
+			_cursor=$(echo "${_json}" | jq -r '.cursor') || return
+		done
+	done < <(cat -)
+}
+
 function _lists() {
 	local _ _user
 
@@ -53,13 +85,13 @@ function _lists() {
 }
 
 function _list() {
-	local _ _user _json _cursor
+	local _ _listuri _json _cursor
 
-	while read _user _
+	while read _listuri _
 	do
 		while [[ ${_cursor} != "null" ]]
 			do
-			_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.graph.getList?list='"${_user}"'&cursor='"${_cursor}" \
+			_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.graph.getList?list='"${_listuri}"'&cursor='"${_cursor}" \
 				-H 'Accept: application/json' \
 				-H 'Authorization: Bearer '"${_BSKY_ACCESS_JWT}") || return
 			echo "${_json}" | jq -r '.items[] | [.uri, .subject.did, .subject.handle] | @tsv' | sed -e 's;.*app.bsky.graph.listitem/;;' || return
@@ -128,6 +160,20 @@ case "$1" in
 		else
 			cat -
 		fi |_profile
+		;;
+	follows)
+		if [[ $# -eq 2 ]]; then
+			echo "$2"
+		else
+			cat -
+		fi | _follows
+		;;
+	followers)
+		if [[ $# -eq 2 ]]; then
+			echo "$2"
+		else
+			cat -
+		fi | _followers
 		;;
 	lists)
 		if [[ $# -eq 2 ]]; then

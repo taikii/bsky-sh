@@ -2,8 +2,16 @@
 
 `refreshJwt` export `~/.bskysession`.
 
+This script nees jq.
+
 ```
 ./bsky.sh profile HANDLE
+  did handle
+
+./bsky.sh follows HANDLE
+  did handle
+
+./bsky.sh followers HANDLE
   did handle
 
 ./bsky.sh lists HANDLE
