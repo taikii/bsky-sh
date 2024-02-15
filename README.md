@@ -9,6 +9,8 @@ This script nees jq.
 ```
 ./bsky.sh login
 
+./bsky.sh refresh-session
+
 ./bsky.sh profile [HANDLE]
   did handle
 

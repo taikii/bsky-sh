@@ -31,9 +31,9 @@ function _login() {
 }
 
 ########
-# _reflesh_session
+# _refresh_session
 ########
-function _reflesh_session() {
+function _refresh_session() {
 	local  _json _refresh_jwt
 
 	if [[ ! -f ~/.bskysession ]]; then
@@ -335,11 +335,13 @@ if [[ $1 == "login" ]]; then
 	_login
 	exit
 else
-	_reflesh_session || exit
+	_refresh_session || exit
 fi
 
 case "$1" in
 	login)
+		;;
+	refresh-session)
 		;;
 	profile)
 		_profile "$([[ $# -ge 2 ]] && echo "$2" || echo "${_DID}")"
