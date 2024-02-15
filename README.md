@@ -7,6 +7,8 @@ This shell calls Bluesky's API.
 This script nees jq.
 
 ```
+./bsky.sh login
+
 ./bsky.sh profile [HANDLE]
   did handle
 
