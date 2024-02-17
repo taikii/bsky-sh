@@ -23,6 +23,7 @@ function _login() {
 		-d '{"identifier": "'"${BSKY_HANDLE}"'", "password": "'"${BSKY_PASSWORD}"'"}')
 	if echo "${_json}" | grep -q '"error":' ; then
 		echo ${_json} >&2
+		echo >&2
 		return 1
 	fi
 	read _DID _ACCESS_JWT _refresh_jwt < <(echo "${_json}" | jq -r '"\(.did) \(.accessJwt) \(.refreshJwt)"')
@@ -46,6 +47,7 @@ function _refresh_session() {
 		-H 'Authorization: Bearer '$(cat ~/.bskysession))
 	if echo "${_json}" | grep -q '"error":' ; then
 		echo ${_json} >&2
+		echo >&2
 		return 1
 	fi
 	read _DID _ACCESS_JWT _refresh_jwt < <(echo "${_json}" | jq -r '"\(.did) \(.accessJwt) \(.refreshJwt)"')
@@ -67,6 +69,7 @@ function _profile() {
 		-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 	if echo "${_json}" | grep -q '"error":' ; then
 		echo ${_json} >&2
+		echo >&2
 		return 1
 	fi
 	echo "${_json}" | jq -r '[.did, .handle] | @tsv'
@@ -88,6 +91,7 @@ function _follows() {
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo ${_json} >&2
+			echo >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
@@ -112,6 +116,7 @@ function _followers() {
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo ${_json} >&2
+		echo >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
@@ -139,6 +144,7 @@ function _feeds() {
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo ${_json} >&2
+			echo >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
@@ -166,6 +172,7 @@ function _lists() {
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo ${_json} >&2
+			echo >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
@@ -189,6 +196,7 @@ function _list() {
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo ${_json} >&2
+			echo >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
@@ -201,11 +209,11 @@ function _list() {
 # DIDs | _addmember LIST_URI
 ########
 function _addmember() {
-	local _ _userdid
+	local _ _userdid _json
 
 	while read _userdid _
 	do
-		curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.createRecord' \
+		 _json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.createRecord' \
 			-H 'Content-Type: application/json' \
 			-H 'Accept: application/json' \
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}" \
@@ -219,9 +227,10 @@ function _addmember() {
 			    "list": "'"$1"'",
 			    "createdAt": "'"$(date '+%Y-%m-%dT%H:%M:%S' --utc)Z"'"
 			  }
-			}'
+			}')
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo ${_json} >&2
+			echo >&2
 			return 1
 		fi
 	done < <(cat -)
@@ -241,11 +250,11 @@ function _delmember() {
 # RKEYs | _delmember_rkey
 ########
 function _delmember_rkey() {
-	local _ _rkey
+	local _ _rkey _json
 
 	while read _rkey _
 	do
-		curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.deleteRecord' \
+		_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.deleteRecord' \
 			-H 'Content-Type: application/json' \
 			-H 'Accept: application/json' \
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}" \
@@ -253,9 +262,10 @@ function _delmember_rkey() {
 			  "repo": "'"${_DID}"'",
 			  "collection": "app.bsky.graph.listitem",
 			  "rkey": "'"${_rkey}"'"
-			}'
+			}')
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo ${_json} >&2
+			echo >&2
 			return 1
 		fi
 	done < <(cat -)
@@ -276,6 +286,7 @@ function _feed() {
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo ${_json} >&2
+			echo >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
@@ -305,6 +316,7 @@ function _list_feed() {
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo ${_json} >&2
+			echo >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
