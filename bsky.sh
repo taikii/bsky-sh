@@ -23,7 +23,6 @@ function _login() {
 		-d '{"identifier": "'"${BSKY_HANDLE}"'", "password": "'"${BSKY_PASSWORD}"'"}')
 	if echo "${_json}" | grep -q '"error":' ; then
 		echo ${_json} >&2
-		echo >&2
 		return 1
 	fi
 	read _DID _ACCESS_JWT _refresh_jwt < <(echo "${_json}" | jq -r '"\(.did) \(.accessJwt) \(.refreshJwt)"')
@@ -47,7 +46,6 @@ function _refresh_session() {
 		-H 'Authorization: Bearer '$(cat ~/.bskysession))
 	if echo "${_json}" | grep -q '"error":' ; then
 		echo ${_json} >&2
-		echo >&2
 		return 1
 	fi
 	read _DID _ACCESS_JWT _refresh_jwt < <(echo "${_json}" | jq -r '"\(.did) \(.accessJwt) \(.refreshJwt)"')
@@ -69,7 +67,6 @@ function _profile() {
 		-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 	if echo "${_json}" | grep -q '"error":' ; then
 		echo ${_json} >&2
-		echo >&2
 		return 1
 	fi
 	echo "${_json}" | jq -r '[.did, .handle] | @tsv'
@@ -91,7 +88,6 @@ function _follows() {
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo ${_json} >&2
-			echo >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
@@ -116,7 +112,6 @@ function _followers() {
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo ${_json} >&2
-		echo >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
@@ -144,7 +139,6 @@ function _feeds() {
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo ${_json} >&2
-			echo >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
@@ -172,7 +166,6 @@ function _lists() {
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo ${_json} >&2
-			echo >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
@@ -196,7 +189,6 @@ function _list() {
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo ${_json} >&2
-			echo >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
@@ -230,7 +222,6 @@ function _addmember() {
 			}')
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo ${_json} >&2
-			echo >&2
 			return 1
 		fi
 	done < <(cat -)
@@ -265,7 +256,6 @@ function _delmember_rkey() {
 			}')
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo ${_json} >&2
-			echo >&2
 			return 1
 		fi
 	done < <(cat -)
@@ -286,7 +276,6 @@ function _feed() {
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo ${_json} >&2
-			echo >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
@@ -316,7 +305,6 @@ function _list_feed() {
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo ${_json} >&2
-			echo >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
@@ -329,6 +317,32 @@ function _list_feed() {
 			break
 		fi
 	done
+}
+
+########
+# TEXT | _post
+########
+function _post() {
+	local _json
+
+	_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.createRecord' \
+	-H 'Content-Type: application/json' \
+	-H 'Accept: application/json' \
+	-H 'Authorization: Bearer '"${_ACCESS_JWT}" \
+	--data-raw '{
+		"repo": "'"${_DID}"'",
+		"collection": "app.bsky.feed.post",
+		"validate": true,
+		"record": {
+			"$type": "app.bsky.feed.post",
+			"text": "'"$(cat - | sed -z -e 's/\n$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\n/\\n/g' -e 's/\r//g')"'",
+			"createdAt": "'"$(date '+%Y-%m-%dT%H:%M:%S' --utc)Z"'"
+		}
+	}')
+	if echo "${_json}" | grep -q '"error":' ; then
+		echo ${_json} >&2
+		return 1
+	fi
 }
 
 ########
@@ -367,8 +381,11 @@ function _usage() {
 		./bsky.sh feed FEED_URI
 			uri createdAt handle text
 
-		./bsky.sh follows [HANDLE]
+		./bsky.sh list-feed LIST_URI
 			uri createdAt handle text
+
+		./bsky.sh post TEXT
+		TEXT | ./bsky.sh post
 	EOS
 }
 
@@ -417,10 +434,13 @@ case "$1" in
 		if [[ $# -ge 2 ]]; then echo "$2"; else cat -; fi | _delmember_rkey
 		;;
 	feed)
-		_feed "$(if [[ $# -ge 2 ]]; then echo "$2"; else cat -; fi)"
+		_feed "$2"
 		;;
 	list-feed)
-		_list_feed "$(if [[ $# -ge 2 ]]; then echo "$2"; else cat -; fi)"
+		_list_feed "$2"
+		;;
+	post)
+		if [[ $# -ge 2 ]]; then echo "$2"; else cat -; fi | _post
 		;;
 	*)
 		_usage
