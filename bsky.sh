@@ -320,6 +320,36 @@ function _list_feed() {
 }
 
 ########
+# _user_feed HANDLE 
+########
+function _user_feed() {
+	local _user _cursor=""
+
+	_user="$1"
+
+	while [[ ${_cursor} != "null" ]]
+		do
+		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.feed.getAuthorFeed?actor='"${_user}"'&cursor='"${_cursor}" \
+			-H 'Accept: application/json' \
+			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+			echo $_json
+		if echo "${_json}" | grep -q '"error":' ; then
+			echo ${_json} >&2
+			return 1
+		fi
+		[[ -n ${_json} ]] || return 0
+		echo "${_json}" | jq -r '.feed[] | [.post.uri, .post.record.createdAt, .post.author.handle, .post.record.text] | @tsv'
+		_cursor=$(echo "${_json}" | jq -r '.cursor')
+		
+		if [[ -t 1 ]] && [[ ${_cursor} != "null" ]]; then
+			read -p ": "
+		else
+			break
+		fi
+	done
+}
+
+########
 # TEXT | _post
 ########
 function _post() {
@@ -338,6 +368,77 @@ function _post() {
 			"text": "'"$(cat - | sed -z -e 's/\n$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\n/\\n/g' -e 's/\r//g')"'",
 			"createdAt": "'"$(date '+%Y-%m-%dT%H:%M:%S' --utc)Z"'"
 		}
+	}')
+	if echo "${_json}" | grep -q '"error":' ; then
+		echo ${_json} >&2
+		return 1
+	fi
+}
+
+########
+# _feed_generator AT_URI
+########
+function _feed_generator() {
+	local _aturi _json
+
+	_aturi="$1"
+	echo $_aturi
+
+	_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.feed.getFeedGenerator?feed='"${_aturi}" \
+		-H 'Accept: application/json' \
+		-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+	if echo "${_json}" | grep -q '"error":' ; then
+		echo ${_json} >&2
+		return 1
+	fi
+	[[ -n ${_json} ]] || return 0
+	# echo "${_json}" | jq -r '.items[] | [.uri, .subject.did, .subject.handle] | @tsv' | sed -e 's;.*app.bsky.graph.listitem/;;'
+	echo "${_json}" | jq
+}
+
+########
+# DESCRIPTION | _new_feed_generator ENDPOINT DISPLAY_NAME
+########
+function _new_feed_generator() {
+	local _json
+
+	_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.createRecord' \
+	-H 'Content-Type: application/json' \
+	-H 'Accept: application/json' \
+	-H 'Authorization: Bearer '"${_ACCESS_JWT}" \
+	--data-raw '{
+		"repo": "'"${_DID}"'",
+		"collection": "app.bsky.feed.generator",
+		"validate": true,
+		"record": {
+			"$type": "app.bsky.feed.generator",
+			"did": "did:web:'"$1"'",
+			"displayName": "'"$(echo $2 | sed -z -e 's/\n$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\n/\\n/g' -e 's/\r//g')"'",
+			"description": "'"$(cat - | sed -z -e 's/\n$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\n/\\n/g' -e 's/\r//g')"'",
+			"createdAt": "'"$(date '+%Y-%m-%dT%H:%M:%S' --utc)Z"'"
+		}
+	}')
+	if echo "${_json}" | grep -q '"error":' ; then
+		echo ${_json} >&2
+		return 1
+	fi
+	echo "${_json}"
+}
+
+########
+# _del_feed_generator RKEY
+########
+function _del_feed_generator() {
+	local _json
+
+	_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.deleteRecord' \
+	-H 'Content-Type: application/json' \
+	-H 'Accept: application/json' \
+	-H 'Authorization: Bearer '"${_ACCESS_JWT}" \
+	--data-raw '{
+		"repo": "'"${_DID}"'",
+		"collection": "apapp.bsky.feed.generator",
+		"rkey": "'"$1"'"
 	}')
 	if echo "${_json}" | grep -q '"error":' ; then
 		echo ${_json} >&2
@@ -382,6 +483,9 @@ function _usage() {
 			uri createdAt handle text
 
 		./bsky.sh list-feed LIST_URI
+			uri createdAt handle text
+
+		./bsky.sh user-feed HANDLE
 			uri createdAt handle text
 
 		./bsky.sh post TEXT
@@ -439,8 +543,20 @@ case "$1" in
 	list-feed)
 		_list_feed "$2"
 		;;
+	user-feed)
+		_user_feed "$2"
+		;;
 	post)
 		if [[ $# -ge 2 ]]; then echo "$2"; else cat -; fi | _post
+		;;
+	feed-generator)
+		_feed_generator $2
+		;;
+	new-feed-generator)
+		cat - | _new_feed_generator "$2" "$3"
+		;;
+	del-feed-generator)
+		_del_feed_generator "$2"
 		;;
 	*)
 		_usage

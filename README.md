@@ -41,6 +41,9 @@ LIST_MEMBER_RKEYs | ./bsky.sh delmember_rkey
 ./bsky.sh list-feed [HANDLE]
   uri createdAt handle text
 
+./bsky.sh user-feed HANDLE
+  uri createdAt handle text
+
 ./bsky.sh post TEXT
 TEXT | ./bsky.sh post
 ```
