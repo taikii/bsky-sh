@@ -22,7 +22,7 @@ function _login() {
 		-H "Content-Type: application/json" \
 		-d '{"identifier": "'"${BSKY_HANDLE}"'", "password": "'"${BSKY_PASSWORD}"'"}')
 	if echo "${_json}" | grep -q '"error":' ; then
-		echo ${_json} >&2
+		echo "${_json}" >&2
 		return 1
 	fi
 	read _DID _ACCESS_JWT _refresh_jwt < <(echo "${_json}" | jq -r '"\(.did) \(.accessJwt) \(.refreshJwt)"')
@@ -45,7 +45,7 @@ function _refresh_session() {
 		-H 'Accept: application/json' \
 		-H 'Authorization: Bearer '$(cat ~/.bskysession))
 	if echo "${_json}" | grep -q '"error":' ; then
-		echo ${_json} >&2
+		echo "${_json}" >&2
 		return 1
 	fi
 	read _DID _ACCESS_JWT _refresh_jwt < <(echo "${_json}" | jq -r '"\(.did) \(.accessJwt) \(.refreshJwt)"')
@@ -66,7 +66,7 @@ function _profile() {
 		-H 'Accept: application/json' \
 		-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 	if echo "${_json}" | grep -q '"error":' ; then
-		echo ${_json} >&2
+		echo "${_json}" >&2
 		return 1
 	fi
 	echo "${_json}" | jq -r '[.did, .handle] | @tsv'
@@ -87,7 +87,7 @@ function _follows() {
 			-H 'Accept: application/json' \
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
-			echo ${_json} >&2
+			echo "${_json}" >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
@@ -111,7 +111,7 @@ function _followers() {
 			-H 'Accept: application/json' \
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
-			echo ${_json} >&2
+			echo "${_json}" >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
@@ -138,7 +138,7 @@ function _feeds() {
 			-H 'Accept: application/json' \
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
-			echo ${_json} >&2
+			echo "${_json}" >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
@@ -165,7 +165,7 @@ function _lists() {
 			-H 'Accept: application/json' \
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
-			echo ${_json} >&2
+			echo "${_json}" >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
@@ -188,7 +188,7 @@ function _list() {
 			-H 'Accept: application/json' \
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
-			echo ${_json} >&2
+			echo "${_json}" >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
@@ -221,7 +221,7 @@ function _addmember() {
 			  }
 			}')
 		if echo "${_json}" | grep -q '"error":' ; then
-			echo ${_json} >&2
+			echo "${_json}" >&2
 			return 1
 		fi
 	done < <(cat -)
@@ -255,7 +255,7 @@ function _delmember_rkey() {
 			  "rkey": "'"${_rkey}"'"
 			}')
 		if echo "${_json}" | grep -q '"error":' ; then
-			echo ${_json} >&2
+			echo "${_json}" >&2
 			return 1
 		fi
 	done < <(cat -)
@@ -275,7 +275,7 @@ function _feed() {
 			-H 'Accept: application/json' \
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
-			echo ${_json} >&2
+			echo "${_json}" >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
@@ -304,7 +304,7 @@ function _list_feed() {
 			-H 'Accept: application/json' \
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
-			echo ${_json} >&2
+			echo "${_json}" >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
@@ -334,7 +334,7 @@ function _user_feed() {
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 			echo $_json
 		if echo "${_json}" | grep -q '"error":' ; then
-			echo ${_json} >&2
+			echo "${_json}" >&2
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
@@ -370,7 +370,7 @@ function _post() {
 		}
 	}')
 	if echo "${_json}" | grep -q '"error":' ; then
-		echo ${_json} >&2
+		echo "${_json}" >&2
 		return 1
 	fi
 }
@@ -388,7 +388,7 @@ function _feed_generator() {
 		-H 'Accept: application/json' \
 		-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 	if echo "${_json}" | grep -q '"error":' ; then
-		echo ${_json} >&2
+		echo "${_json}" >&2
 		return 1
 	fi
 	[[ -n ${_json} ]] || return 0
@@ -419,7 +419,7 @@ function _new_feed_generator() {
 		}
 	}')
 	if echo "${_json}" | grep -q '"error":' ; then
-		echo ${_json} >&2
+		echo "${_json}" >&2
 		return 1
 	fi
 	echo "${_json}"
@@ -437,13 +437,14 @@ function _del_feed_generator() {
 	-H 'Authorization: Bearer '"${_ACCESS_JWT}" \
 	--data-raw '{
 		"repo": "'"${_DID}"'",
-		"collection": "apapp.bsky.feed.generator",
+		"collection": "app.bsky.feed.generator",
 		"rkey": "'"$1"'"
 	}')
 	if echo "${_json}" | grep -q '"error":' ; then
-		echo ${_json} >&2
+		echo "${_json}" >&2
 		return 1
 	fi
+	echo "${_json}"
 }
 
 ########
