@@ -69,7 +69,30 @@ function _profile() {
 		echo "${_json}" >&2
 		return 1
 	fi
-	echo "${_json}" | jq -r '[.did, .handle] | @tsv'
+	echo "${_json}" | jq -r '[.did, .handle, .displayName, .description] | @tsv'
+}
+
+########
+# _search_user QUERY
+########
+function _search_user() {
+	local _q _json _cursor=""
+
+	_q="$1"
+
+	while [[ ${_cursor} != "null" ]]
+	do
+		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.actor.searchActors?q='"$(echo "${_q}" | jq -Rr @uri )"'&cursor='"${_cursor}" \
+			-H 'Accept: application/json' \
+			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+		if echo "${_json}" | grep -q '"error":' ; then
+			echo "${_json}" >&2
+			return 1
+		fi
+		[[ -n ${_json} ]] || return 0
+		echo "${_json}" | jq -r '.actors[] | [.did, .handle, .displayName, .description] | @tsv'
+		_cursor=$(echo "${_json}" | jq -r '.cursor')
+	done
 }
 
 ########
@@ -91,7 +114,7 @@ function _follows() {
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
-		echo "${_json}" | jq -r '.follows[] | [.did, .handle] | @tsv'
+		echo "${_json}" | jq -r '.follows[] | [.did, .handle, .displayName, .description] | @tsv'
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
 	done
 }
@@ -115,7 +138,7 @@ function _followers() {
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
-		echo "${_json}" | jq -r '.followers[] | [.did, .handle] | @tsv'
+		echo "${_json}" | jq -r '.followers[] | [.did, .handle, .displayName, .description] | @tsv'
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
 	done
 }
@@ -192,7 +215,7 @@ function _list() {
 			return 1
 		fi
 		[[ -n ${_json} ]] || return 0
-		echo "${_json}" | jq -r '.items[] | [.uri, .subject.did, .subject.handle] | @tsv' | sed -e 's;.*app.bsky.graph.listitem/;;'
+		echo "${_json}" | jq -r '.items[] | [.uri, .subject.did, .subject.handle, .subject.displayName, .subject.description] | @tsv' | sed -e 's;.*app.bsky.graph.listitem/;;'
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
 	done
 }
@@ -457,19 +480,22 @@ function _usage() {
 		./bsky.sh refresh-session
 
 		./bsky.sh profile [HANDLE]
-			did handle
+			did handle displayName description
+
+		./bsky.sh search-user QUERY
+			did handle displayName description
 
 		./bsky.sh follows [HANDLE]
-			did handle
+			did handle displayName description
 
 		./bsky.sh followers [HANDLE]
-			did handle
+			did handle displayName description
 
 		./bsky.sh lists [HANDLE]
 				uri collection name
 
 		./bsky.sh list LIST_URI
-				rkey did handle
+				rkey did handle displayName description
 
 		./bsky.sh addmember LIST_URI USER_DID
 		USER_DIDs | ./bsky.sh addmember LIST_URI
@@ -513,6 +539,9 @@ case "$1" in
 		;;
 	profile)
 		_profile "$([[ $# -ge 2 ]] && echo "$2" || echo "${_DID}")"
+		;;
+	search-user)
+		_search_user "$2"
 		;;
 	follows)
 		_follows "$([[ $# -ge 2 ]] && echo "$2" || echo "${_DID}")"

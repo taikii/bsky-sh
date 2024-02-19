@@ -12,19 +12,22 @@ This script nees jq.
 ./bsky.sh refresh-session
 
 ./bsky.sh profile [HANDLE]
-  did handle
+  did handle displayName description
+
+./bsky.sh search-user QUERY
+  did handle displayName description
 
 ./bsky.sh follows [HANDLE]
-  did handle
+  did handle displayName description
 
 ./bsky.sh followers [HANDLE]
-  did handle
+  did handle displayName description
 
 ./bsky.sh lists [HANDLE]
     uri collection name
 
 ./bsky.sh list LIST_URI
-    rkey did handle
+    rkey did handle displayName description
 
 ./bsky.sh addmember LIST_URI USER_DID
 USER_DIDs | ./bsky.sh addmember LIST_URI
@@ -38,7 +41,7 @@ LIST_MEMBER_RKEYs | ./bsky.sh delmember_rkey
 ./bsky.sh feed FEED_URI
   uri createdAt handle text
 
-./bsky.sh list-feed [HANDLE]
+./bsky.sh list-feed LIST_URI
   uri createdAt handle text
 
 ./bsky.sh user-feed HANDLE
