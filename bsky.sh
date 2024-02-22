@@ -228,20 +228,20 @@ function _addmember() {
 
 	while read _userdid _
 	do
-		 _json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.createRecord' \
+		_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.createRecord' \
 			-H 'Content-Type: application/json' \
 			-H 'Accept: application/json' \
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}" \
 			--data-raw '{
-			  "repo": "'"${_DID}"'",
-			  "collection": "app.bsky.graph.listitem",
-			  "validate": true,
-			  "record": {
-			    "$type": "app.bsky.graph.listitem",
-			    "subject": "'"${_userdid}"'",
-			    "list": "'"$1"'",
-			    "createdAt": "'"$(date '+%Y-%m-%dT%H:%M:%S' --utc)Z"'"
-			  }
+				"repo": "'"${_DID}"'",
+				"collection": "app.bsky.graph.listitem",
+				"validate": true,
+				"record": {
+					"$type": "app.bsky.graph.listitem",
+					"subject": "'"${_userdid}"'",
+					"list": "'"$1"'",
+					"createdAt": "'"$(date '+%Y-%m-%dT%H:%M:%S' --utc)Z"'"
+				}
 			}')
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
@@ -273,9 +273,9 @@ function _delmember_rkey() {
 			-H 'Accept: application/json' \
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}" \
 			--data-raw '{
-			  "repo": "'"${_DID}"'",
-			  "collection": "app.bsky.graph.listitem",
-			  "rkey": "'"${_rkey}"'"
+				"repo": "'"${_DID}"'",
+				"collection": "app.bsky.graph.listitem",
+				"rkey": "'"${_rkey}"'"
 			}')
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
@@ -305,7 +305,7 @@ function _feed() {
 		echo "${_json}" | jq -r '.feed[] | [.post.uri, .post.record.createdAt, .post.author.handle, .post.record.text] | @tsv'
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
 
-		if [[ -t 1 ]] && [[ ${_cursor} != "null" ]]; then
+		if [[ -t 0 ]] && [[ ${_cursor} != "null" ]]; then
 			read -p ": "
 		else
 			break
@@ -334,7 +334,7 @@ function _list_feed() {
 		echo "${_json}" | jq -r '.feed[] | [.post.uri, .post.record.createdAt, .post.author.handle, .post.record.text] | @tsv'
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
 		
-		if [[ -t 1 ]] && [[ ${_cursor} != "null" ]]; then
+		if [[ -t 0 ]] && [[ ${_cursor} != "null" ]]; then
 			read -p ": "
 		else
 			break
@@ -355,7 +355,6 @@ function _user_feed() {
 		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.feed.getAuthorFeed?actor='"${_user}"'&cursor='"${_cursor}" \
 			-H 'Accept: application/json' \
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
-			echo $_json
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
 			return 1
@@ -363,8 +362,37 @@ function _user_feed() {
 		[[ -n ${_json} ]] || return 0
 		echo "${_json}" | jq -r '.feed[] | [.post.uri, .post.record.createdAt, .post.author.handle, .post.record.text] | @tsv'
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
-		
-		if [[ -t 1 ]] && [[ ${_cursor} != "null" ]]; then
+
+		if [[ -t 0 ]] && [[ ${_cursor} != "null" ]]; then
+			read -p ": "
+		else
+			break
+		fi
+	done
+}
+
+########
+# _search_posts QUERY 
+########
+function _search_posts() {
+	local _q _cursor=""
+
+	_q="$1"
+
+	while [[ ${_cursor} != "null" ]]
+		do
+		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.feed.searchPosts?q='"$(echo "${_q}" | jq -Rr @uri )"'&cursor='"${_cursor}" \
+			-H 'Accept: application/json' \
+			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+		if echo "${_json}" | grep -q '"error":' ; then
+			echo "${_json}" >&2
+			return 1
+		fi
+		[[ -n ${_json} ]] || return 0
+		echo "${_json}" | jq -r '.posts[] | [.uri, .record.createdAt, .author.handle, .record.text] | @tsv'
+		_cursor=$(echo "${_json}" | jq -r '.cursor')
+
+		if [[ -t 0 ]] && [[ ${_cursor} != "null" ]]; then
 			read -p ": "
 		else
 			break
@@ -512,7 +540,13 @@ function _usage() {
 		./bsky.sh list-feed LIST_URI
 			uri createdAt handle text
 
+		./bsky.sh feed FEED_URI
+			uri createdAt handle text
+
 		./bsky.sh user-feed HANDLE
+			uri createdAt handle text
+
+		./bsky.sh search-posts QUERY
 			uri createdAt handle text
 
 		./bsky.sh post TEXT
@@ -575,6 +609,9 @@ case "$1" in
 		;;
 	user-feed)
 		_user_feed "$2"
+		;;
+	search)
+		_search_posts "$2"
 		;;
 	post)
 		if [[ $# -ge 2 ]]; then echo "$2"; else cat -; fi | _post
