@@ -654,14 +654,14 @@ function _del_feed_generator() {
 }
 
 ########
-# _list_records COLLECTION
+# _list_records USER_DID COLLECTION
 ########
 function _list_records() {
 	local _json _cursor=""
 
 	while [[ ${_cursor} != "null" ]]
 		do
-		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/com.atproto.repo.listRecords?repo='"${_DID}"'&collection='"$1"'&cursor='"${_cursor}" \
+		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/com.atproto.repo.listRecords?repo='"$1"'&collection='"$2"'&cursor='"${_cursor}" \
 			-H 'Accept: application/json' \
 			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
 		if echo "${_json}" | grep -q '"error":' ; then
@@ -671,10 +671,9 @@ function _list_records() {
 		[[ -n ${_json} ]] || return 0
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
 
-		echo "${_json}" | jq -r
+		echo "${_json}" | jq -c ".records[]"
 	done
 }
-
 
 ########
 # _usage
@@ -831,7 +830,7 @@ case "$1" in
 		_del_feed_generator "$2"
 		;;
 	list-records)
-		_list_records "$2"
+		_list_records "$2" "$3"
 		;;
 	*)
 		_usage
