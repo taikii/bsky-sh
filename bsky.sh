@@ -289,6 +289,9 @@ function _addmember() {
 			echo "${_json}" >&2
 			return 1
 		fi
+
+		# echo rkey[\t]did
+		echo -e "$(echo "${_json}" | jq -r '.uri' | sed -e 's;.*/;;')\t${_userdid}"
 	done < <(cat -)
 }
 
