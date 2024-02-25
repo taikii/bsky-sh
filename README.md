@@ -23,6 +23,12 @@ This script nees jq.
 ./bsky.sh followers [HANDLE]
   did handle displayName description
 
+./bsky.sh mutes
+  did handle displayName description
+
+./bsky.sh blocks
+  did handle displayName description
+
 ./bsky.sh lists [HANDLE]
     uri collection name
 

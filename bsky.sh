@@ -120,8 +120,8 @@ function _follows() {
 }
 
 ########
-# _feeds DID
-# _feeds HANDLE
+# _followers DID
+# _followers HANDLE
 ########
 function _followers() {
 	local _user _json _cursor=""
@@ -139,6 +139,48 @@ function _followers() {
 		fi
 		[[ -n ${_json} ]] || return 0
 		echo "${_json}" | jq -r '.followers[] | [.did, .handle, .displayName, .description] | @tsv'
+		_cursor=$(echo "${_json}" | jq -r '.cursor')
+	done
+}
+
+########
+# _mutes
+########
+function _mutes() {
+	local _json _cursor=""
+
+	while [[ ${_cursor} != "null" ]]
+		do
+		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.graph.getMutes?cursor='"${_cursor}" \
+			-H 'Accept: application/json' \
+			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+		if echo "${_json}" | grep -q '"error":' ; then
+			echo "${_json}" >&2
+			return 1
+		fi
+		[[ -n ${_json} ]] || return 0
+		echo "${_json}" | jq -r '.mutes[] | [.did, .handle, .displayName, .description] | @tsv'
+		_cursor=$(echo "${_json}" | jq -r '.cursor')
+	done
+}
+
+########
+# _blocks
+########
+function _blocks() {
+	local _json _cursor=""
+
+	while [[ ${_cursor} != "null" ]]
+		do
+		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.graph.getBlocks?cursor='"${_cursor}" \
+			-H 'Accept: application/json' \
+			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+		if echo "${_json}" | grep -q '"error":' ; then
+			echo "${_json}" >&2
+			return 1
+		fi
+		[[ -n ${_json} ]] || return 0
+		echo "${_json}" | jq -r '.blocks[] | [.did, .handle, .displayName, .description] | @tsv'
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
 	done
 }
@@ -518,6 +560,12 @@ function _usage() {
 
 		./bsky.sh followers [HANDLE]
 			did handle displayName description
+	
+		./bsky.sh mutes
+			did handle displayName description
+	
+		./bsky.sh blocks
+			did handle displayName description
 
 		./bsky.sh lists [HANDLE]
 				uri collection name
@@ -582,6 +630,12 @@ case "$1" in
 		;;
 	followers)
 		_followers "$([[ $# -ge 2 ]] && echo "$2" || echo "${_DID}")"
+		;;
+	mutes)
+		_mutes
+		;;
+	blocks)
+		_blocks
 		;;
 	feeds)
 		_feeds "$([[ $# -ge 2 ]] && echo "$2" || echo "${_DID}")"
