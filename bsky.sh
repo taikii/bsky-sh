@@ -144,6 +144,27 @@ function _followers() {
 }
 
 ########
+# _blocks
+########
+function _blocks() {
+	local _json _cursor=""
+
+	while [[ ${_cursor} != "null" ]]
+		do
+		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.graph.getBlocks?cursor='"${_cursor}" \
+			-H 'Accept: application/json' \
+			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+		if echo "${_json}" | grep -q '"error":' ; then
+			echo "${_json}" >&2
+			return 1
+		fi
+		[[ -n ${_json} ]] || return 0
+		echo "${_json}" | jq -r '.blocks[] | [.viewer.blocking, .did, .handle, .displayName, .description] | @tsv' | sed -e 's;.*app.bsky.graph.block/;;'
+		_cursor=$(echo "${_json}" | jq -r '.cursor')
+	done
+}
+
+########
 # _mutes
 ########
 function _mutes() {
@@ -160,27 +181,6 @@ function _mutes() {
 		fi
 		[[ -n ${_json} ]] || return 0
 		echo "${_json}" | jq -r '.mutes[] | [.did, .handle, .displayName, .description] | @tsv'
-		_cursor=$(echo "${_json}" | jq -r '.cursor')
-	done
-}
-
-########
-# _blocks
-########
-function _blocks() {
-	local _json _cursor=""
-
-	while [[ ${_cursor} != "null" ]]
-		do
-		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.graph.getBlocks?cursor='"${_cursor}" \
-			-H 'Accept: application/json' \
-			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
-		if echo "${_json}" | grep -q '"error":' ; then
-			echo "${_json}" >&2
-			return 1
-		fi
-		[[ -n ${_json} ]] || return 0
-		echo "${_json}" | jq -r '.blocks[] | [.did, .handle, .displayName, .description] | @tsv'
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
 	done
 }
@@ -321,6 +321,116 @@ function _delmember_rkey() {
 				"repo": "'"${_DID}"'",
 				"collection": "app.bsky.graph.listitem",
 				"rkey": "'"${_rkey}"'"
+			}')
+		if echo "${_json}" | grep -q '"error":' ; then
+			echo "${_json}" >&2
+			return 1
+		fi
+	done < <(cat -)
+}
+
+########
+# DIDs | _block
+########
+function _block() {
+	local _ _userdid _json
+
+	while read _userdid _
+	do
+		_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.createRecord' \
+			-H 'Content-Type: application/json' \
+			-H 'Accept: application/json' \
+			-H 'Authorization: Bearer '"${_ACCESS_JWT}" \
+			--data-raw '{
+				"repo": "'"${_DID}"'",
+				"collection": "app.bsky.graph.block",
+				"validate": true,
+				"record": {
+					"$type": "app.bsky.graph.block",
+					"subject": "'"${_userdid}"'",
+					"createdAt": "'"$(date '+%Y-%m-%dT%H:%M:%S' --utc)Z"'"
+				}
+			}')
+		if echo "${_json}" | grep -q '"error":' ; then
+			echo "${_json}" >&2
+			return 1
+		fi
+
+		# echo rkey[\t]did
+		echo -e "$(echo "${_json}" | jq -r '.uri' | sed -e 's;.*/;;')\t${_userdid}"
+	done < <(cat -)
+}
+
+########
+# DIDs | _unblock
+########
+function _unblock() {
+	join -t $'\t' -1 2 -2 1 -o 1.1 \
+		<(_blocks | sort -t $'\t' -k 2) \
+		<(cat - | sort) \
+		| _unblock_rkey
+}
+
+########
+# RKEYs | _unblock_rkey
+########
+function _unblock_rkey() {
+	local _ _rkey _json
+
+	while read _rkey _
+	do
+		_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.deleteRecord' \
+			-H 'Content-Type: application/json' \
+			-H 'Accept: application/json' \
+			-H 'Authorization: Bearer '"${_ACCESS_JWT}" \
+			--data-raw '{
+				"repo": "'"${_DID}"'",
+				"collection": "app.bsky.graph.block",
+				"rkey": "'"${_rkey}"'"
+			}')
+		if echo "${_json}" | grep -q '"error":' ; then
+			echo "${_json}" >&2
+			return 1
+		fi
+	done < <(cat -)
+}
+
+########
+# DIDs | _mute
+########
+function _mute() {
+	local _ _userdid _json
+
+	while read _userdid _
+	do
+		_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/app.bsky.graph.muteActor' \
+			-H 'Content-Type: application/json' \
+			-H 'Accept: application/json' \
+			-H 'Authorization: Bearer '"${_ACCESS_JWT}" \
+			--data-raw '{
+				"actor": "'"${_userdid}"'"
+			}')
+		if echo "${_json}" | grep -q '"error":' ; then
+			echo "${_json}" >&2
+			return 1
+		fi
+	done < <(cat -)
+}
+
+########
+# DIDs | _unmute
+########
+function _unmute() {
+	local _ _userdid _json
+
+	while read _userdid _
+	do
+		_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/app.bsky.graph.unmuteActor' \
+			-H 'Content-Type: application/json' \
+			-H 'Accept: application/json' \
+			-H 'Authorization: Bearer '"${_ACCESS_JWT}" \
+			--data-raw '{
+				"actor": "'"${_userdid}"'"
 			}')
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
@@ -544,6 +654,29 @@ function _del_feed_generator() {
 }
 
 ########
+# _list_records COLLECTION
+########
+function _list_records() {
+	local _json _cursor=""
+
+	while [[ ${_cursor} != "null" ]]
+		do
+		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/com.atproto.repo.listRecords?repo='"${_DID}"'&collection='"$1"'&cursor='"${_cursor}" \
+			-H 'Accept: application/json' \
+			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+		if echo "${_json}" | grep -q '"error":' ; then
+			echo "${_json}" >&2
+			return 1
+		fi
+		[[ -n ${_json} ]] || return 0
+		_cursor=$(echo "${_json}" | jq -r '.cursor')
+
+		echo "${_json}" | jq -r
+	done
+}
+
+
+########
 # _usage
 ########
 function _usage() {
@@ -564,17 +697,17 @@ function _usage() {
 		./bsky.sh followers [HANDLE]
 			did handle displayName description
 	
-		./bsky.sh mutes
-			did handle displayName description
-	
 		./bsky.sh blocks
+			rkey did handle displayName description
+
+		./bsky.sh mutes
 			did handle displayName description
 
 		./bsky.sh lists [HANDLE]
-				uri collection name
+			uri collection name
 
 		./bsky.sh list LIST_URI
-				rkey did handle displayName description
+			rkey did handle displayName description
 
 		./bsky.sh addmember LIST_URI USER_DID
 		USER_DIDs | ./bsky.sh addmember LIST_URI
@@ -658,6 +791,21 @@ case "$1" in
 	delmember-rkey)
 		if [[ $# -ge 2 ]]; then echo "$2"; else cat -; fi | _delmember_rkey
 		;;
+	block)
+		if [[ $# -ge 2 ]]; then echo "$2"; else cat -; fi | _block
+		;;
+	unblock)
+		if [[ $# -ge 2 ]]; then echo "$2"; else cat -; fi | _unblock
+		;;
+	unblock-rkey)
+		if [[ $# -ge 2 ]]; then echo "$2"; else cat -; fi | _unblock_rkey
+		;;
+	mute)
+		if [[ $# -ge 2 ]]; then echo "$2"; else cat -; fi | _mute
+		;;
+	unmute)
+		if [[ $# -ge 2 ]]; then echo "$2"; else cat -; fi | _unmute
+		;;
 	feed)
 		_feed "$2"
 		;;
@@ -681,6 +829,9 @@ case "$1" in
 		;;
 	del-feed-generator)
 		_del_feed_generator "$2"
+		;;
+	list-records)
+		_list_records "$2"
 		;;
 	*)
 		_usage
