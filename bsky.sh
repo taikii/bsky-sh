@@ -20,14 +20,14 @@ function _login() {
 
 	_json=$(curl -s -X POST https://bsky.social/xrpc/com.atproto.server.createSession \
 		-H "Content-Type: application/json" \
-		-d '{"identifier": "'"${BSKY_HANDLE}"'", "password": "'"${BSKY_PASSWORD}"'"}')
+		-d @- <<< '{"identifier": "'"${BSKY_HANDLE}"'", "password": "'"${BSKY_PASSWORD}"'"}')
 	if echo "${_json}" | grep -q '"error":' ; then
 		echo "${_json}" >&2
 		return 1
 	fi
-	read _DID _ACCESS_JWT _refresh_jwt < <(echo "${_json}" | jq -r '"\(.did) \(.accessJwt) \(.refreshJwt)"')
+	read _DID _ACCESS_JWT _refresh_jwt < <(jq -r '"\(.did) \(.accessJwt) \(.refreshJwt)"' <<< "${_json}")
 
-	echo ${_refresh_jwt} > ~/.bskysession
+	cat <<< "${_refresh_jwt}" > ~/.bskysession
 }
 
 ########
@@ -43,14 +43,14 @@ function _refresh_session() {
 
 	_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.server.refreshSession' \
 		-H 'Accept: application/json' \
-		-H 'Authorization: Bearer '$(cat ~/.bskysession))
+		-K- <<< "Header = \"Authorization: Bearer $(cat ~/.bskysession)\"")
 	if echo "${_json}" | grep -q '"error":' ; then
 		echo "${_json}" >&2
 		return 1
 	fi
-	read _DID _ACCESS_JWT _refresh_jwt < <(echo "${_json}" | jq -r '"\(.did) \(.accessJwt) \(.refreshJwt)"')
+	read _DID _ACCESS_JWT _refresh_jwt < <(jq -r '"\(.did) \(.accessJwt) \(.refreshJwt)"' <<< "${_json}")
 
-	echo ${_refresh_jwt} > ~/.bskysession
+	cat <<< "${_refresh_jwt}" > ~/.bskysession
 }
 
 ########
@@ -64,7 +64,7 @@ function _profile() {
 
 	_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.actor.getProfile?actor='"${_user}" \
 		-H 'Accept: application/json' \
-		-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+		-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 	if echo "${_json}" | grep -q '"error":' ; then
 		echo "${_json}" >&2
 		return 1
@@ -84,7 +84,7 @@ function _search_user() {
 	do
 		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.actor.searchActors?q='"$(echo "${_q}" | jq -Rr @uri )"'&cursor='"${_cursor}" \
 			-H 'Accept: application/json' \
-			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
 			return 1
@@ -108,7 +108,7 @@ function _follows() {
 		do
 		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.graph.getFollows?actor='"${_user}"'&cursor='"${_cursor}" \
 			-H 'Accept: application/json' \
-			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
 			return 1
@@ -132,7 +132,7 @@ function _followers() {
 		do
 		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.graph.getFollowers?actor='"${_user}"'&cursor='"${_cursor}" \
 			-H 'Accept: application/json' \
-			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
 			return 1
@@ -153,7 +153,7 @@ function _blocks() {
 		do
 		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.graph.getBlocks?cursor='"${_cursor}" \
 			-H 'Accept: application/json' \
-			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
 			return 1
@@ -174,7 +174,7 @@ function _mutes() {
 		do
 		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.graph.getMutes?cursor='"${_cursor}" \
 			-H 'Accept: application/json' \
-			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
 			return 1
@@ -201,7 +201,7 @@ function _feeds() {
 		do
 		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.feed.getActorFeeds?actor='"${_user}"'&cursor='"${_cursor}" \
 			-H 'Accept: application/json' \
-			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
 			return 1
@@ -228,7 +228,7 @@ function _lists() {
 		do
 		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.graph.getLists?actor='"${_user}"'&cursor='"${_cursor}" \
 			-H 'Accept: application/json' \
-			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
 			return 1
@@ -251,7 +251,7 @@ function _list() {
 		do
 		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.graph.getList?list='"${_listuri}"'&cursor='"${_cursor}" \
 			-H 'Accept: application/json' \
-			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
 			return 1
@@ -273,7 +273,7 @@ function _addmember() {
 		_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.createRecord' \
 			-H 'Content-Type: application/json' \
 			-H 'Accept: application/json' \
-			-H 'Authorization: Bearer '"${_ACCESS_JWT}" \
+			-K- \
 			--data-raw '{
 				"repo": "'"${_DID}"'",
 				"collection": "app.bsky.graph.listitem",
@@ -284,7 +284,8 @@ function _addmember() {
 					"list": "'"$1"'",
 					"createdAt": "'"$(date '+%Y-%m-%dT%H:%M:%S' --utc)Z"'"
 				}
-			}')
+			}' \
+			<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
 			return 1
@@ -316,12 +317,13 @@ function _delmember_rkey() {
 		_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.deleteRecord' \
 			-H 'Content-Type: application/json' \
 			-H 'Accept: application/json' \
-			-H 'Authorization: Bearer '"${_ACCESS_JWT}" \
+			-K- \
 			--data-raw '{
 				"repo": "'"${_DID}"'",
 				"collection": "app.bsky.graph.listitem",
 				"rkey": "'"${_rkey}"'"
-			}')
+			}' \
+			<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
 			return 1
@@ -340,7 +342,7 @@ function _block() {
 		_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.createRecord' \
 			-H 'Content-Type: application/json' \
 			-H 'Accept: application/json' \
-			-H 'Authorization: Bearer '"${_ACCESS_JWT}" \
+			-K- \
 			--data-raw '{
 				"repo": "'"${_DID}"'",
 				"collection": "app.bsky.graph.block",
@@ -350,7 +352,8 @@ function _block() {
 					"subject": "'"${_userdid}"'",
 					"createdAt": "'"$(date '+%Y-%m-%dT%H:%M:%S' --utc)Z"'"
 				}
-			}')
+			}' \
+			<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
 			return 1
@@ -382,12 +385,13 @@ function _unblock_rkey() {
 		_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.deleteRecord' \
 			-H 'Content-Type: application/json' \
 			-H 'Accept: application/json' \
-			-H 'Authorization: Bearer '"${_ACCESS_JWT}" \
+			-K- \
 			--data-raw '{
 				"repo": "'"${_DID}"'",
 				"collection": "app.bsky.graph.block",
 				"rkey": "'"${_rkey}"'"
-			}')
+			}' \
+			<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
 			return 1
@@ -406,10 +410,11 @@ function _mute() {
 		_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/app.bsky.graph.muteActor' \
 			-H 'Content-Type: application/json' \
 			-H 'Accept: application/json' \
-			-H 'Authorization: Bearer '"${_ACCESS_JWT}" \
+			-K- \
 			--data-raw '{
 				"actor": "'"${_userdid}"'"
-			}')
+			}' \
+			<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
 			return 1
@@ -428,10 +433,11 @@ function _unmute() {
 		_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/app.bsky.graph.unmuteActor' \
 			-H 'Content-Type: application/json' \
 			-H 'Accept: application/json' \
-			-H 'Authorization: Bearer '"${_ACCESS_JWT}" \
+			-K- \
 			--data-raw '{
 				"actor": "'"${_userdid}"'"
-			}')
+			}' \
+			<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
 			return 1
@@ -451,7 +457,7 @@ function _feed() {
 		do
 		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.feed.getFeed?feed='"${_uri}"'&cursor='"${_cursor}" \
 			-H 'Accept: application/json' \
-			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
 			return 1
@@ -480,7 +486,7 @@ function _list_feed() {
 		do
 		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.feed.getListFeed?list='"${_uri}"'&cursor='"${_cursor}" \
 			-H 'Accept: application/json' \
-			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
 			return 1
@@ -509,7 +515,7 @@ function _user_feed() {
 		do
 		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.feed.getAuthorFeed?actor='"${_user}"'&cursor='"${_cursor}" \
 			-H 'Accept: application/json' \
-			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
 			return 1
@@ -538,7 +544,7 @@ function _search_posts() {
 		do
 		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.feed.searchPosts?q='"$(echo "${_q}" | jq -Rr @uri )"'&cursor='"${_cursor}" \
 			-H 'Accept: application/json' \
-			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
 			return 1
@@ -562,19 +568,20 @@ function _post() {
 	local _json
 
 	_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.createRecord' \
-	-H 'Content-Type: application/json' \
-	-H 'Accept: application/json' \
-	-H 'Authorization: Bearer '"${_ACCESS_JWT}" \
-	--data-raw '{
-		"repo": "'"${_DID}"'",
-		"collection": "app.bsky.feed.post",
-		"validate": true,
-		"record": {
-			"$type": "app.bsky.feed.post",
-			"text": "'"$(cat - | sed -z -e 's/\n$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\n/\\n/g' -e 's/\r//g')"'",
-			"createdAt": "'"$(date '+%Y-%m-%dT%H:%M:%S' --utc)Z"'"
-		}
-	}')
+		-H 'Content-Type: application/json' \
+		-H 'Accept: application/json' \
+		-K- \
+		--data-raw '{
+			"repo": "'"${_DID}"'",
+			"collection": "app.bsky.feed.post",
+			"validate": true,
+			"record": {
+				"$type": "app.bsky.feed.post",
+				"text": "'"$(cat - | sed -z -e 's/\n$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\n/\\n/g' -e 's/\r//g')"'",
+				"createdAt": "'"$(date '+%Y-%m-%dT%H:%M:%S' --utc)Z"'"
+			}
+		}' \
+		<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 	if echo "${_json}" | grep -q '"error":' ; then
 		echo "${_json}" >&2
 		return 1
@@ -592,7 +599,7 @@ function _feed_generator() {
 
 	_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.feed.getFeedGenerator?feed='"${_aturi}" \
 		-H 'Accept: application/json' \
-		-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+		-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 	if echo "${_json}" | grep -q '"error":' ; then
 		echo "${_json}" >&2
 		return 1
@@ -609,21 +616,22 @@ function _new_feed_generator() {
 	local _json
 
 	_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.createRecord' \
-	-H 'Content-Type: application/json' \
-	-H 'Accept: application/json' \
-	-H 'Authorization: Bearer '"${_ACCESS_JWT}" \
-	--data-raw '{
-		"repo": "'"${_DID}"'",
-		"collection": "app.bsky.feed.generator",
-		"validate": true,
-		"record": {
-			"$type": "app.bsky.feed.generator",
-			"did": "did:web:'"$1"'",
-			"displayName": "'"$(echo $2 | sed -z -e 's/\n$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\n/\\n/g' -e 's/\r//g')"'",
-			"description": "'"$(cat - | sed -z -e 's/\n$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\n/\\n/g' -e 's/\r//g')"'",
-			"createdAt": "'"$(date '+%Y-%m-%dT%H:%M:%S' --utc)Z"'"
-		}
-	}')
+		-H 'Content-Type: application/json' \
+		-H 'Accept: application/json' \
+		-K- \
+		--data-raw '{
+			"repo": "'"${_DID}"'",
+			"collection": "app.bsky.feed.generator",
+			"validate": true,
+			"record": {
+				"$type": "app.bsky.feed.generator",
+				"did": "did:web:'"$1"'",
+				"displayName": "'"$(echo $2 | sed -z -e 's/\n$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\n/\\n/g' -e 's/\r//g')"'",
+				"description": "'"$(cat - | sed -z -e 's/\n$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\n/\\n/g' -e 's/\r//g')"'",
+				"createdAt": "'"$(date '+%Y-%m-%dT%H:%M:%S' --utc)Z"'"
+			}
+		}' \
+		<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 	if echo "${_json}" | grep -q '"error":' ; then
 		echo "${_json}" >&2
 		return 1
@@ -638,14 +646,15 @@ function _del_feed_generator() {
 	local _json
 
 	_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.deleteRecord' \
-	-H 'Content-Type: application/json' \
-	-H 'Accept: application/json' \
-	-H 'Authorization: Bearer '"${_ACCESS_JWT}" \
-	--data-raw '{
-		"repo": "'"${_DID}"'",
-		"collection": "app.bsky.feed.generator",
-		"rkey": "'"$1"'"
-	}')
+		-H 'Content-Type: application/json' \
+		-H 'Accept: application/json' \
+		-K- \
+		--data-raw '{
+			"repo": "'"${_DID}"'",
+			"collection": "app.bsky.feed.generator",
+			"rkey": "'"$1"'"
+		}' \
+		<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 	if echo "${_json}" | grep -q '"error":' ; then
 		echo "${_json}" >&2
 		return 1
@@ -663,7 +672,7 @@ function _list_records() {
 		do
 		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/com.atproto.repo.listRecords?repo='"$1"'&collection='"$2"'&cursor='"${_cursor}" \
 			-H 'Accept: application/json' \
-			-H 'Authorization: Bearer '"${_ACCESS_JWT}")
+			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 		if echo "${_json}" | grep -q '"error":' ; then
 			echo "${_json}" >&2
 			return 1
