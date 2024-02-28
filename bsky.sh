@@ -4,9 +4,9 @@ set -euo pipefail
 _REFRESH_JWT=
 _ACCESS_JWT=
 _DID=
-_ATPENDPOINT='https://bsky.social'
-
 _ENDPOINT='https://bsky.social'
+
+_SERVICEENDPOINT='https://bsky.social'
 
 ########
 # _get_session
@@ -16,7 +16,7 @@ function _get_session() {
 		_login
 	fi
 
-	read _REFRESH_JWT _ACCESS_JWT _DID _ATPENDPOINT < ~/.bskysession
+	read _REFRESH_JWT _ACCESS_JWT _DID _ENDPOINT < ~/.bskysession
 
 	if [[ -z ${_REFRESH_JWT} ]]; then
 		_login
@@ -39,7 +39,7 @@ function _login() {
 			echo
 		}
 
-	_json=$(curl -s -X POST "${_ENDPOINT}"'/xrpc/com.atproto.server.createSession' \
+	_json=$(curl -s -X POST "${_SERVICEENDPOINT}"'/xrpc/com.atproto.server.createSession' \
 		-H "Content-Type: application/json" \
 		-d @- <<< '{"identifier": "'"${BSKY_HANDLE}"'", "password": "'"${BSKY_PASSWORD}"'"}')
 	if grep -q '"error":' <<< "${_json}" ; then
@@ -48,7 +48,7 @@ function _login() {
 	fi
 
 	jq -r '"\(.refreshJwt) \(.accessJwt) \(.did) \(.didDoc.service[0].serviceEndpoint)"' <<< "${_json}" > ~/.bskysession
-	read _REFRESH_JWT _ACCESS_JWT _DID _ATPENDPOINT < ~/.bskysession
+	read _REFRESH_JWT _ACCESS_JWT _DID _ENDPOINT < ~/.bskysession
 }
 
 ########
@@ -61,7 +61,7 @@ function _refresh_session() {
 		return
 	fi
 
-	_json=$(curl -s -L -X POST "${_ENDPOINT}"'/xrpc/com.atproto.server.refreshSession' \
+	_json=$(curl -s -L -X POST "${_SERVICEENDPOINT}"'/xrpc/com.atproto.server.refreshSession' \
 		-H 'Accept: application/json' \
 		-K- <<< "Header = \"Authorization: Bearer ${_REFRESH_JWT}\"")
 	if echo "${_json}" | grep -q '"error":' ; then
@@ -70,7 +70,7 @@ function _refresh_session() {
 	fi
 
 	jq -r '"\(.refreshJwt) \(.accessJwt) \(.did) \(.didDoc.service[0].serviceEndpoint)"' <<< "${_json}" > ~/.bskysession
-	read _REFRESH_JWT _ACCESS_JWT _DID _ATPENDPOINT < ~/.bskysession
+	read _REFRESH_JWT _ACCESS_JWT _DID _ENDPOINT < ~/.bskysession
 }
 
 ########
@@ -295,7 +295,7 @@ function _addmember() {
 	local _userdid _json
 	while read _userdid _
 	do
-		_json=$(_httppost "${_ATPENDPOINT}"'/xrpc/com.atproto.repo.createRecord' '{
+		_json=$(_httppost "${_ENDPOINT}"'/xrpc/com.atproto.repo.createRecord' '{
 				"repo": "'"${_DID}"'",
 				"collection": "app.bsky.graph.listitem",
 				"validate": true,
@@ -330,7 +330,7 @@ function _delmember_rkey() {
 
 	while read _rkey _
 	do
-		_httppost "${_ATPENDPOINT}"'/xrpc/com.atproto.repo.deleteRecord' '{
+		_httppost "${_ENDPOINT}"'/xrpc/com.atproto.repo.deleteRecord' '{
 				"repo": "'"${_DID}"'",
 				"collection": "app.bsky.graph.listitem",
 				"rkey": "'"${_rkey}"'"
@@ -346,7 +346,7 @@ function _block() {
 
 	while read _userdid _
 	do
-		_json=$(_httppost "${_ATPENDPOINT}"'/xrpc/com.atproto.repo.createRecord' '{
+		_json=$(_httppost "${_ENDPOINT}"'/xrpc/com.atproto.repo.createRecord' '{
 				"repo": "'"${_DID}"'",
 				"collection": "app.bsky.graph.block",
 				"validate": true,
@@ -380,7 +380,7 @@ function _unblock_rkey() {
 
 	while read _rkey _
 	do
-		_httppost "${_ATPENDPOINT}"'/xrpc/com.atproto.repo.deleteRecord' '{
+		_httppost "${_ENDPOINT}"'/xrpc/com.atproto.repo.deleteRecord' '{
 				"repo": "'"${_DID}"'",
 				"collection": "app.bsky.graph.block",
 				"rkey": "'"${_rkey}"'"
@@ -512,7 +512,7 @@ function _search_posts() {
 # TEXT | _post
 ########
 function _post() {
-	_httppost "${_ATPENDPOINT}"'/xrpc/com.atproto.repo.createRecord' '{
+	_httppost "${_ENDPOINT}"'/xrpc/com.atproto.repo.createRecord' '{
 			"repo": "'"${_DID}"'",
 			"collection": "app.bsky.feed.post",
 			"validate": true,
@@ -545,7 +545,7 @@ function _feed_generator() {
 function _new_feed_generator() {
 	local _json
 
-	_json=$(_httppost "${_ATPENDPOINT}"'/xrpc/com.atproto.repo.createRecord' '{
+	_json=$(_httppost "${_ENDPOINT}"'/xrpc/com.atproto.repo.createRecord' '{
 			"repo": "'"${_DID}"'",
 			"collection": "app.bsky.feed.generator",
 			"validate": true,
@@ -566,7 +566,7 @@ function _new_feed_generator() {
 function _del_feed_generator() {
 	local _json
 
-	_json=$(_httppost "${_ATPENDPOINT}"'/xrpc/com.atproto.repo.deleteRecord' '{
+	_json=$(_httppost "${_ENDPOINT}"'/xrpc/com.atproto.repo.deleteRecord' '{
 			"repo": "'"${_DID}"'",
 			"collection": "app.bsky.feed.generator",
 			"rkey": "'"$1"'"
@@ -582,7 +582,7 @@ function _list_records() {
 
 	while [[ ${_cursor} != "null" ]]
 		do
-		_json=$(_httpget "${_ATPENDPOINT}"'/xrpc/com.atproto.repo.listRecords?repo='"$1"'&collection='"$2"'&cursor='"${_cursor}")
+		_json=$(_httpget "${_ENDPOINT}"'/xrpc/com.atproto.repo.listRecords?repo='"$1"'&collection='"$2"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
 		jq -c ".records[]" <<< "${_json}"
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
