@@ -64,7 +64,7 @@ function _refresh_session() {
 	_json=$(curl -s -L -X POST "${_SERVICEENDPOINT}"'/xrpc/com.atproto.server.refreshSession' \
 		-H 'Accept: application/json' \
 		-K- <<< "Header = \"Authorization: Bearer ${_REFRESH_JWT}\"")
-	if echo "${_json}" | grep -q '"error":' ; then
+	if grep -q '"error":' <<< "${_json}" ; then
 		echo "${_json}" >&2
 		return 1
 	fi
@@ -143,7 +143,7 @@ function _httppost() {
 function _profile() {
 	local _json
 	_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.actor.getProfile?actor='"$1")
-	echo "${_json}" | jq -r '[.did, .handle, .displayName, .description] | @tsv'
+	jq -r '[.did, .handle, .displayName, .description] | @tsv' <<< "${_json}"
 }
 
 ########
@@ -156,10 +156,10 @@ function _search_user() {
 
 	while [[ ${_cursor} != "null" ]]
 	do
-		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.actor.searchActors?q='"$(echo "${_q}" | jq -Rr @uri )"'&cursor='"${_cursor}")
+		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.actor.searchActors?q='"$(jq -Rr '@uri' <<< "${_q}")"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
 		jq -r '.actors[] | [.did, .handle, .displayName, .description] | @tsv' <<< "${_json}"
-		_cursor=$(echo "${_json}" | jq -r '.cursor')
+		_cursor=$(jq -r '.cursor' <<< "${_json}")
 	done
 }
 
@@ -177,7 +177,7 @@ function _follows() {
 		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.graph.getFollows?actor='"${_user}"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
 		jq -r '.follows[] | [.did, .handle, .displayName, .description] | @tsv' <<< "${_json}"
-		_cursor=$(echo "${_json}" | jq -r '.cursor')
+		_cursor=$(jq -r '.cursor' <<< "${_json}")
 	done
 }
 
@@ -195,7 +195,7 @@ function _followers() {
 		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.graph.getFollowers?actor='"${_user}"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
 		jq -r '.followers[] | [.did, .handle, .displayName, .description] | @tsv' <<< "${_json}"
-		_cursor=$(echo "${_json}" | jq -r '.cursor')
+		_cursor=$(jq -r '.cursor' <<< "${_json}")
 	done
 }
 
@@ -225,7 +225,7 @@ function _mutes() {
 		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.graph.getMutes?cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
 		jq -r '.mutes[] | [.did, .handle, .displayName, .description] | @tsv' <<< "${_json}"
-		_cursor=$(echo "${_json}" | jq -r '.cursor')
+		_cursor=$(jq -r '.cursor' <<< "${_json}")
 	done
 }
 
@@ -246,7 +246,7 @@ function _feeds() {
 		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.feed.getActorFeeds?actor='"${_user}"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
 		jq -r '.feeds[] | [.uri, .displayName] | @tsv' <<< "${_json}"
-		_cursor=$(echo "${_json}" | jq -r '.cursor')
+		_cursor=$(jq -r '.cursor' <<< "${_json}")
 	done
 }
 
@@ -267,7 +267,7 @@ function _lists() {
 		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.graph.getLists?actor='"${_user}"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
 		jq -r '.lists[] | [.uri, .purpose, .name] | @tsv' <<< "${_json}"
-		_cursor=$(echo "${_json}" | jq -r '.cursor')
+		_cursor=$(jq -r '.cursor' <<< "${_json}")
 	done
 }
 
@@ -284,7 +284,7 @@ function _list() {
 		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.graph.getList?list='"${_listuri}"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
 		jq -r '.items[] | [.uri, .subject.did, .subject.handle, .subject.displayName, .subject.description] | @tsv' <<< "${_json}" | sed -e 's;.*app.bsky.graph.listitem/;;'
-		_cursor=$(echo "${_json}" | jq -r '.cursor')
+		_cursor=$(jq -r '.cursor' <<< "${_json}")
 	done
 }
 
@@ -429,7 +429,7 @@ function _feed() {
 		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.feed.getFeed?feed='"${_uri}"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
 		jq -r '.feed[] | [.post.uri, .post.record.createdAt, .post.author.handle, .post.record.text] | @tsv' <<< "${_json}"
-		_cursor=$(echo "${_json}" | jq -r '.cursor')
+		_cursor=$(jq -r '.cursor' <<< "${_json}")
 
 		if [[ -t 0 ]] && [[ ${_cursor} != "null" ]]; then
 			read -p ": "
@@ -452,7 +452,7 @@ function _list_feed() {
 		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.feed.getListFeed?list='"${_uri}"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
 		jq -r '.feed[] | [.post.uri, .post.record.createdAt, .post.author.handle, .post.record.text] | @tsv' <<< "${_json}"
-		_cursor=$(echo "${_json}" | jq -r '.cursor')
+		_cursor=$(jq -r '.cursor' <<< "${_json}")
 		
 		if [[ -t 0 ]] && [[ ${_cursor} != "null" ]]; then
 			read -p ": "
@@ -475,7 +475,7 @@ function _user_feed() {
 		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.feed.getAuthorFeed?actor='"${_user}"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
 		jq -r '.feed[] | [.post.uri, .post.record.createdAt, .post.author.handle, .post.record.text] | @tsv' <<< "${_json}"
-		_cursor=$(echo "${_json}" | jq -r '.cursor')
+		_cursor=$(jq -r '.cursor' <<< "${_json}")
 
 		if [[ -t 0 ]] && [[ ${_cursor} != "null" ]]; then
 			read -p ": "
@@ -495,10 +495,10 @@ function _search_posts() {
 
 	while [[ ${_cursor} != "null" ]]
 		do
-		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.feed.searchPosts?q='"$(echo "${_q}" | jq -Rr @uri )"'&cursor='"${_cursor}")
+		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.feed.searchPosts?q='"$(jq -Rr '@uri' <<< "${_q}")"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
 		jq -r '.posts[] | [.uri, .record.createdAt, .author.handle, .record.text] | @tsv' <<< "${_json}"
-		_cursor=$(echo "${_json}" | jq -r '.cursor')
+		_cursor=$(jq -r '.cursor' <<< "${_json}")
 
 		if [[ -t 0 ]] && [[ ${_cursor} != "null" ]]; then
 			read -p ": "
@@ -531,12 +531,11 @@ function _feed_generator() {
 	local _aturi _json _stdin=""
 
 	_aturi="$1"
-	echo $_aturi
 
 	_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.feed.getFeedGenerator?feed='"${_aturi}")
 	[[ -n ${_json} ]] || return 0
 	# jq -r '.items[] | [.uri, .subject.did, .subject.handle] | @tsv' | sed -e 's;.*app.bsky.graph.listitem/;;' <<< "${_json}"
-	echo "${_json}" | jq
+	echo "${_json}"
 }
 
 ########
@@ -585,7 +584,7 @@ function _list_records() {
 		_json=$(_httpget "${_ENDPOINT}"'/xrpc/com.atproto.repo.listRecords?repo='"$1"'&collection='"$2"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
 		jq -c ".records[]" <<< "${_json}"
-		_cursor=$(echo "${_json}" | jq -r '.cursor')
+		_cursor=$(jq -r '.cursor' <<< "${_json}")
 	done
 }
 
