@@ -1,14 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-_DID=
+_REFRESH_JWT=
 _ACCESS_JWT=
+_DID=
+_ATPENDPOINT='https://bsky.social'
+
+_ENDPOINT='https://bsky.social'
+
+########
+# _get_session
+########
+function _get_session() {
+	if [[ ! -f ~/.bskysession ]]; then
+		_login
+	fi
+
+	read _REFRESH_JWT _ACCESS_JWT _DID _ATPENDPOINT < ~/.bskysession
+
+	if [[ -z ${_REFRESH_JWT} ]]; then
+		_login
+	elif [[ -z ${_ACCESS_JWT} ]]; then
+		_refresh_session
+	fi
+}
 
 ########
 # _login
 ########
 function _login() {
-	local  _json="" _refresh_jwt
+	local  _json
 
 	rm -f ~/.bskysession
 
@@ -18,39 +39,101 @@ function _login() {
 			echo
 		}
 
-	_json=$(curl -s -X POST https://bsky.social/xrpc/com.atproto.server.createSession \
+	_json=$(curl -s -X POST "${_ENDPOINT}"'/xrpc/com.atproto.server.createSession' \
 		-H "Content-Type: application/json" \
 		-d @- <<< '{"identifier": "'"${BSKY_HANDLE}"'", "password": "'"${BSKY_PASSWORD}"'"}')
-	if echo "${_json}" | grep -q '"error":' ; then
+	if grep -q '"error":' <<< "${_json}" ; then
 		echo "${_json}" >&2
 		return 1
 	fi
-	read _DID _ACCESS_JWT _refresh_jwt < <(jq -r '"\(.did) \(.accessJwt) \(.refreshJwt)"' <<< "${_json}")
 
-	cat <<< "${_refresh_jwt}" > ~/.bskysession
+	jq -r '"\(.refreshJwt) \(.accessJwt) \(.did) \(.didDoc.service[0].serviceEndpoint)"' <<< "${_json}" > ~/.bskysession
+	read _REFRESH_JWT _ACCESS_JWT _DID _ATPENDPOINT < ~/.bskysession
 }
 
 ########
 # _refresh_session
 ########
 function _refresh_session() {
-	local  _json _refresh_jwt
-
+	local  _json
 	if [[ ! -f ~/.bskysession ]]; then
 		_login
 		return
 	fi
 
-	_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.server.refreshSession' \
+	_json=$(curl -s -L -X POST "${_ENDPOINT}"'/xrpc/com.atproto.server.refreshSession' \
 		-H 'Accept: application/json' \
-		-K- <<< "Header = \"Authorization: Bearer $(cat ~/.bskysession)\"")
+		-K- <<< "Header = \"Authorization: Bearer ${_REFRESH_JWT}\"")
 	if echo "${_json}" | grep -q '"error":' ; then
 		echo "${_json}" >&2
 		return 1
 	fi
-	read _DID _ACCESS_JWT _refresh_jwt < <(jq -r '"\(.did) \(.accessJwt) \(.refreshJwt)"' <<< "${_json}")
 
-	cat <<< "${_refresh_jwt}" > ~/.bskysession
+	jq -r '"\(.refreshJwt) \(.accessJwt) \(.did) \(.didDoc.service[0].serviceEndpoint)"' <<< "${_json}" > ~/.bskysession
+	read _REFRESH_JWT _ACCESS_JWT _DID _ATPENDPOINT < ~/.bskysession
+}
+
+########
+# _httpget URI
+########
+function _httpget() {
+	local _json _uri _stdin=""
+
+	_uri="$1"
+
+	_json=$(curl -s -L -X GET "${_uri}" \
+		-H 'Accept: application/json' \
+		-K- \
+		<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
+	if grep -q '"error":"ExpiredToken"' <<< "${_json}" ; then
+		if [[ ${FUNCNAME[0]} == ${FUNCNAME[1]} ]]; then
+			echo "${_json}" >&2
+			return 1
+		else
+			_refresh_session
+			${FUNCNAME[0]} "$@"
+		fi
+	elif grep -q '"error":' <<< "${_json}" ; then
+		echo "${_json}" >&2
+		return 1
+	fi
+
+	if [[ -n ${_json} ]]; then
+		echo "${_json}"
+	fi
+}
+
+########
+# _httppost URI DATA
+########
+function _httppost() {
+	local _json _uri _data _stdin=""
+
+	_uri="$1"
+	_data="$2"
+
+	_json=$(curl -s -L -X POST "${_uri}" \
+		-H 'Content-Type: application/json' \
+		-H 'Accept: application/json' \
+		-K- \
+		--data-raw "${_data}" \
+		<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
+	if grep -q '"error":"ExpiredToken"' <<< "${_json}" ; then
+		if [[ ${FUNCNAME[0]} == ${FUNCNAME[1]} ]]; then
+			echo "${_json}" >&2
+			return 1
+		else
+			_refresh_session
+			${FUNCNAME[0]} "$@"
+		fi
+	elif grep -q '"error":' <<< "${_json}" ; then
+		echo "${_json}" >&2
+		return 1
+	fi
+
+	if [[ -n ${_json} ]]; then
+		echo "${_json}"
+	fi
 }
 
 ########
@@ -58,17 +141,8 @@ function _refresh_session() {
 # _follows HANDLE
 ########
 function _profile() {
-	local _user _json
-
-	_user="$1"
-
-	_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.actor.getProfile?actor='"${_user}" \
-		-H 'Accept: application/json' \
-		-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-	if echo "${_json}" | grep -q '"error":' ; then
-		echo "${_json}" >&2
-		return 1
-	fi
+	local _json
+	_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.actor.getProfile?actor='"$1")
 	echo "${_json}" | jq -r '[.did, .handle, .displayName, .description] | @tsv'
 }
 
@@ -82,15 +156,9 @@ function _search_user() {
 
 	while [[ ${_cursor} != "null" ]]
 	do
-		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.actor.searchActors?q='"$(echo "${_q}" | jq -Rr @uri )"'&cursor='"${_cursor}" \
-			-H 'Accept: application/json' \
-			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-		if echo "${_json}" | grep -q '"error":' ; then
-			echo "${_json}" >&2
-			return 1
-		fi
+		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.actor.searchActors?q='"$(echo "${_q}" | jq -Rr @uri )"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
-		echo "${_json}" | jq -r '.actors[] | [.did, .handle, .displayName, .description] | @tsv'
+		jq -r '.actors[] | [.did, .handle, .displayName, .description] | @tsv' <<< "${_json}"
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
 	done
 }
@@ -106,15 +174,9 @@ function _follows() {
 
 	while [[ ${_cursor} != "null" ]]
 		do
-		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.graph.getFollows?actor='"${_user}"'&cursor='"${_cursor}" \
-			-H 'Accept: application/json' \
-			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-		if echo "${_json}" | grep -q '"error":' ; then
-			echo "${_json}" >&2
-			return 1
-		fi
+		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.graph.getFollows?actor='"${_user}"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
-		echo "${_json}" | jq -r '.follows[] | [.did, .handle, .displayName, .description] | @tsv'
+		jq -r '.follows[] | [.did, .handle, .displayName, .description] | @tsv' <<< "${_json}"
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
 	done
 }
@@ -130,15 +192,9 @@ function _followers() {
 
 	while [[ ${_cursor} != "null" ]]
 		do
-		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.graph.getFollowers?actor='"${_user}"'&cursor='"${_cursor}" \
-			-H 'Accept: application/json' \
-			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-		if echo "${_json}" | grep -q '"error":' ; then
-			echo "${_json}" >&2
-			return 1
-		fi
+		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.graph.getFollowers?actor='"${_user}"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
-		echo "${_json}" | jq -r '.followers[] | [.did, .handle, .displayName, .description] | @tsv'
+		jq -r '.followers[] | [.did, .handle, .displayName, .description] | @tsv' <<< "${_json}"
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
 	done
 }
@@ -151,16 +207,10 @@ function _blocks() {
 
 	while [[ ${_cursor} != "null" ]]
 		do
-		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.graph.getBlocks?cursor='"${_cursor}" \
-			-H 'Accept: application/json' \
-			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-		if echo "${_json}" | grep -q '"error":' ; then
-			echo "${_json}" >&2
-			return 1
-		fi
+		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.graph.getBlocks?cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
-		echo "${_json}" | jq -r '.blocks[] | [.viewer.blocking, .did, .handle, .displayName, .description] | @tsv' | sed -e 's;.*app.bsky.graph.block/;;'
-		_cursor=$(echo "${_json}" | jq -r '.cursor')
+		jq -r '.blocks[] | [.viewer.blocking, .did, .handle, .displayName, .description] | @tsv' <<< "${_json}" | sed -e 's;.*app.bsky.graph.block/;;'
+		_cursor=$(jq -r '.cursor' <<< "${_json}")
 	done
 }
 
@@ -172,15 +222,9 @@ function _mutes() {
 
 	while [[ ${_cursor} != "null" ]]
 		do
-		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.graph.getMutes?cursor='"${_cursor}" \
-			-H 'Accept: application/json' \
-			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-		if echo "${_json}" | grep -q '"error":' ; then
-			echo "${_json}" >&2
-			return 1
-		fi
+		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.graph.getMutes?cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
-		echo "${_json}" | jq -r '.mutes[] | [.did, .handle, .displayName, .description] | @tsv'
+		jq -r '.mutes[] | [.did, .handle, .displayName, .description] | @tsv' <<< "${_json}"
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
 	done
 }
@@ -199,15 +243,9 @@ function _feeds() {
 
 	while [[ ${_cursor} != "null" ]]
 		do
-		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.feed.getActorFeeds?actor='"${_user}"'&cursor='"${_cursor}" \
-			-H 'Accept: application/json' \
-			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-		if echo "${_json}" | grep -q '"error":' ; then
-			echo "${_json}" >&2
-			return 1
-		fi
+		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.feed.getActorFeeds?actor='"${_user}"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
-		echo "${_json}" | jq -r '.feeds[] | [.uri, .displayName] | @tsv'
+		jq -r '.feeds[] | [.uri, .displayName] | @tsv' <<< "${_json}"
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
 	done
 }
@@ -226,15 +264,9 @@ function _lists() {
 
 	while [[ ${_cursor} != "null" ]]
 		do
-		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.graph.getLists?actor='"${_user}"'&cursor='"${_cursor}" \
-			-H 'Accept: application/json' \
-			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-		if echo "${_json}" | grep -q '"error":' ; then
-			echo "${_json}" >&2
-			return 1
-		fi
+		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.graph.getLists?actor='"${_user}"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
-		echo "${_json}" | jq -r '.lists[] | [.uri, .purpose, .name] | @tsv'
+		jq -r '.lists[] | [.uri, .purpose, .name] | @tsv' <<< "${_json}"
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
 	done
 }
@@ -249,15 +281,9 @@ function _list() {
 
 	while [[ ${_cursor} != "null" ]]
 		do
-		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.graph.getList?list='"${_listuri}"'&cursor='"${_cursor}" \
-			-H 'Accept: application/json' \
-			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-		if echo "${_json}" | grep -q '"error":' ; then
-			echo "${_json}" >&2
-			return 1
-		fi
+		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.graph.getList?list='"${_listuri}"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
-		echo "${_json}" | jq -r '.items[] | [.uri, .subject.did, .subject.handle, .subject.displayName, .subject.description] | @tsv' | sed -e 's;.*app.bsky.graph.listitem/;;'
+		jq -r '.items[] | [.uri, .subject.did, .subject.handle, .subject.displayName, .subject.description] | @tsv' <<< "${_json}" | sed -e 's;.*app.bsky.graph.listitem/;;'
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
 	done
 }
@@ -266,15 +292,10 @@ function _list() {
 # DIDs | _addmember LIST_URI
 ########
 function _addmember() {
-	local _ _userdid _json
-
+	local _userdid _json
 	while read _userdid _
 	do
-		_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.createRecord' \
-			-H 'Content-Type: application/json' \
-			-H 'Accept: application/json' \
-			-K- \
-			--data-raw '{
+		_json=$(_httppost "${_ATPENDPOINT}"'/xrpc/com.atproto.repo.createRecord' '{
 				"repo": "'"${_DID}"'",
 				"collection": "app.bsky.graph.listitem",
 				"validate": true,
@@ -284,15 +305,10 @@ function _addmember() {
 					"list": "'"$1"'",
 					"createdAt": "'"$(date '+%Y-%m-%dT%H:%M:%S' --utc)Z"'"
 				}
-			}' \
-			<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-		if echo "${_json}" | grep -q '"error":' ; then
-			echo "${_json}" >&2
-			return 1
-		fi
+			}')
 
 		# echo rkey[\t]did
-		echo -e "$(echo "${_json}" | jq -r '.uri' | sed -e 's;.*/;;')\t${_userdid}"
+		echo -e "$(jq -r '.uri' <<< "${_json}" | sed -e 's;.*/;;')\t${_userdid}"
 	done < <(cat -)
 }
 
@@ -310,24 +326,15 @@ function _delmember() {
 # RKEYs | _delmember_rkey
 ########
 function _delmember_rkey() {
-	local _ _rkey _json
+	local _rkey
 
 	while read _rkey _
 	do
-		_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.deleteRecord' \
-			-H 'Content-Type: application/json' \
-			-H 'Accept: application/json' \
-			-K- \
-			--data-raw '{
+		_httppost "${_ATPENDPOINT}"'/xrpc/com.atproto.repo.deleteRecord' '{
 				"repo": "'"${_DID}"'",
 				"collection": "app.bsky.graph.listitem",
 				"rkey": "'"${_rkey}"'"
-			}' \
-			<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-		if echo "${_json}" | grep -q '"error":' ; then
-			echo "${_json}" >&2
-			return 1
-		fi
+			}'
 	done < <(cat -)
 }
 
@@ -335,15 +342,11 @@ function _delmember_rkey() {
 # DIDs | _block
 ########
 function _block() {
-	local _ _userdid _json
+	local _userdid _json
 
 	while read _userdid _
 	do
-		_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.createRecord' \
-			-H 'Content-Type: application/json' \
-			-H 'Accept: application/json' \
-			-K- \
-			--data-raw '{
+		_json=$(_httppost "${_ATPENDPOINT}"'/xrpc/com.atproto.repo.createRecord' '{
 				"repo": "'"${_DID}"'",
 				"collection": "app.bsky.graph.block",
 				"validate": true,
@@ -352,15 +355,10 @@ function _block() {
 					"subject": "'"${_userdid}"'",
 					"createdAt": "'"$(date '+%Y-%m-%dT%H:%M:%S' --utc)Z"'"
 				}
-			}' \
-			<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-		if echo "${_json}" | grep -q '"error":' ; then
-			echo "${_json}" >&2
-			return 1
-		fi
+			}')
 
 		# echo rkey[\t]did
-		echo -e "$(echo "${_json}" | jq -r '.uri' | sed -e 's;.*/;;')\t${_userdid}"
+		echo -e "$(jq -r '.uri' <<< "${_json}" | sed -e 's;.*/;;')\t${_userdid}"
 	done < <(cat -)
 }
 
@@ -378,24 +376,15 @@ function _unblock() {
 # RKEYs | _unblock_rkey
 ########
 function _unblock_rkey() {
-	local _ _rkey _json
+	local _rkey _json
 
 	while read _rkey _
 	do
-		_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.deleteRecord' \
-			-H 'Content-Type: application/json' \
-			-H 'Accept: application/json' \
-			-K- \
-			--data-raw '{
+		_httppost "${_ATPENDPOINT}"'/xrpc/com.atproto.repo.deleteRecord' '{
 				"repo": "'"${_DID}"'",
 				"collection": "app.bsky.graph.block",
 				"rkey": "'"${_rkey}"'"
-			}' \
-			<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-		if echo "${_json}" | grep -q '"error":' ; then
-			echo "${_json}" >&2
-			return 1
-		fi
+			}'
 	done < <(cat -)
 }
 
@@ -403,22 +392,13 @@ function _unblock_rkey() {
 # DIDs | _mute
 ########
 function _mute() {
-	local _ _userdid _json
+	local _userdid
 
 	while read _userdid _
 	do
-		_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/app.bsky.graph.muteActor' \
-			-H 'Content-Type: application/json' \
-			-H 'Accept: application/json' \
-			-K- \
-			--data-raw '{
+		_httppost "${_ENDPOINT}"'/xrpc/app.bsky.graph.muteActor' '{
 				"actor": "'"${_userdid}"'"
-			}' \
-			<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-		if echo "${_json}" | grep -q '"error":' ; then
-			echo "${_json}" >&2
-			return 1
-		fi
+			}'
 	done < <(cat -)
 }
 
@@ -426,22 +406,13 @@ function _mute() {
 # DIDs | _unmute
 ########
 function _unmute() {
-	local _ _userdid _json
+	local _userdid _json
 
 	while read _userdid _
 	do
-		_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/app.bsky.graph.unmuteActor' \
-			-H 'Content-Type: application/json' \
-			-H 'Accept: application/json' \
-			-K- \
-			--data-raw '{
+		_httppost "${_ENDPOINT}"'/xrpc/app.bsky.graph.unmuteActor' '{
 				"actor": "'"${_userdid}"'"
-			}' \
-			<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-		if echo "${_json}" | grep -q '"error":' ; then
-			echo "${_json}" >&2
-			return 1
-		fi
+			}'
 	done < <(cat -)
 }
 
@@ -449,21 +420,15 @@ function _unmute() {
 # _feed FEED_URI 
 ########
 function _feed() {
-	local _uri _cursor=""
+	local _uri _json _cursor=""
 
 	_uri="$1"
 
 	while [[ ${_cursor} != "null" ]]
 		do
-		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.feed.getFeed?feed='"${_uri}"'&cursor='"${_cursor}" \
-			-H 'Accept: application/json' \
-			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-		if echo "${_json}" | grep -q '"error":' ; then
-			echo "${_json}" >&2
-			return 1
-		fi
+		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.feed.getFeed?feed='"${_uri}"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
-		echo "${_json}" | jq -r '.feed[] | [.post.uri, .post.record.createdAt, .post.author.handle, .post.record.text] | @tsv'
+		jq -r '.feed[] | [.post.uri, .post.record.createdAt, .post.author.handle, .post.record.text] | @tsv' <<< "${_json}"
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
 
 		if [[ -t 0 ]] && [[ ${_cursor} != "null" ]]; then
@@ -478,21 +443,15 @@ function _feed() {
 # _list_feed LIST_FEED_URI 
 ########
 function _list_feed() {
-	local _uri _cursor=""
+	local _uri _json _cursor=""
 
 	_uri="$1"
 
 	while [[ ${_cursor} != "null" ]]
 		do
-		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.feed.getListFeed?list='"${_uri}"'&cursor='"${_cursor}" \
-			-H 'Accept: application/json' \
-			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-		if echo "${_json}" | grep -q '"error":' ; then
-			echo "${_json}" >&2
-			return 1
-		fi
+		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.feed.getListFeed?list='"${_uri}"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
-		echo "${_json}" | jq -r '.feed[] | [.post.uri, .post.record.createdAt, .post.author.handle, .post.record.text] | @tsv'
+		jq -r '.feed[] | [.post.uri, .post.record.createdAt, .post.author.handle, .post.record.text] | @tsv' <<< "${_json}"
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
 		
 		if [[ -t 0 ]] && [[ ${_cursor} != "null" ]]; then
@@ -507,21 +466,15 @@ function _list_feed() {
 # _user_feed HANDLE 
 ########
 function _user_feed() {
-	local _user _cursor=""
+	local _user _json _cursor=""
 
 	_user="$1"
 
 	while [[ ${_cursor} != "null" ]]
 		do
-		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.feed.getAuthorFeed?actor='"${_user}"'&cursor='"${_cursor}" \
-			-H 'Accept: application/json' \
-			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-		if echo "${_json}" | grep -q '"error":' ; then
-			echo "${_json}" >&2
-			return 1
-		fi
+		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.feed.getAuthorFeed?actor='"${_user}"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
-		echo "${_json}" | jq -r '.feed[] | [.post.uri, .post.record.createdAt, .post.author.handle, .post.record.text] | @tsv'
+		jq -r '.feed[] | [.post.uri, .post.record.createdAt, .post.author.handle, .post.record.text] | @tsv' <<< "${_json}"
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
 
 		if [[ -t 0 ]] && [[ ${_cursor} != "null" ]]; then
@@ -536,21 +489,15 @@ function _user_feed() {
 # _search_posts QUERY 
 ########
 function _search_posts() {
-	local _q _cursor=""
+	local _q _json _cursor=""
 
 	_q="$1"
 
 	while [[ ${_cursor} != "null" ]]
 		do
-		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.feed.searchPosts?q='"$(echo "${_q}" | jq -Rr @uri )"'&cursor='"${_cursor}" \
-			-H 'Accept: application/json' \
-			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-		if echo "${_json}" | grep -q '"error":' ; then
-			echo "${_json}" >&2
-			return 1
-		fi
+		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.feed.searchPosts?q='"$(echo "${_q}" | jq -Rr @uri )"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
-		echo "${_json}" | jq -r '.posts[] | [.uri, .record.createdAt, .author.handle, .record.text] | @tsv'
+		jq -r '.posts[] | [.uri, .record.createdAt, .author.handle, .record.text] | @tsv' <<< "${_json}"
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
 
 		if [[ -t 0 ]] && [[ ${_cursor} != "null" ]]; then
@@ -565,13 +512,7 @@ function _search_posts() {
 # TEXT | _post
 ########
 function _post() {
-	local _json
-
-	_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.createRecord' \
-		-H 'Content-Type: application/json' \
-		-H 'Accept: application/json' \
-		-K- \
-		--data-raw '{
+	_httppost "${_ATPENDPOINT}"'/xrpc/com.atproto.repo.createRecord' '{
 			"repo": "'"${_DID}"'",
 			"collection": "app.bsky.feed.post",
 			"validate": true,
@@ -580,32 +521,21 @@ function _post() {
 				"text": "'"$(cat - | sed -z -e 's/\n$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\n/\\n/g' -e 's/\r//g')"'",
 				"createdAt": "'"$(date '+%Y-%m-%dT%H:%M:%S' --utc)Z"'"
 			}
-		}' \
-		<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-	if echo "${_json}" | grep -q '"error":' ; then
-		echo "${_json}" >&2
-		return 1
-	fi
+		}'
 }
 
 ########
 # _feed_generator AT_URI
 ########
 function _feed_generator() {
-	local _aturi _json
+	local _aturi _json _stdin=""
 
 	_aturi="$1"
 	echo $_aturi
 
-	_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/app.bsky.feed.getFeedGenerator?feed='"${_aturi}" \
-		-H 'Accept: application/json' \
-		-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-	if echo "${_json}" | grep -q '"error":' ; then
-		echo "${_json}" >&2
-		return 1
-	fi
+	_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.feed.getFeedGenerator?feed='"${_aturi}")
 	[[ -n ${_json} ]] || return 0
-	# echo "${_json}" | jq -r '.items[] | [.uri, .subject.did, .subject.handle] | @tsv' | sed -e 's;.*app.bsky.graph.listitem/;;'
+	# jq -r '.items[] | [.uri, .subject.did, .subject.handle] | @tsv' | sed -e 's;.*app.bsky.graph.listitem/;;' <<< "${_json}"
 	echo "${_json}" | jq
 }
 
@@ -615,11 +545,7 @@ function _feed_generator() {
 function _new_feed_generator() {
 	local _json
 
-	_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.createRecord' \
-		-H 'Content-Type: application/json' \
-		-H 'Accept: application/json' \
-		-K- \
-		--data-raw '{
+	_json=$(_httppost "${_ATPENDPOINT}"'/xrpc/com.atproto.repo.createRecord' '{
 			"repo": "'"${_DID}"'",
 			"collection": "app.bsky.feed.generator",
 			"validate": true,
@@ -630,12 +556,7 @@ function _new_feed_generator() {
 				"description": "'"$(cat - | sed -z -e 's/\n$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\n/\\n/g' -e 's/\r//g')"'",
 				"createdAt": "'"$(date '+%Y-%m-%dT%H:%M:%S' --utc)Z"'"
 			}
-		}' \
-		<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-	if echo "${_json}" | grep -q '"error":' ; then
-		echo "${_json}" >&2
-		return 1
-	fi
+		}')
 	echo "${_json}"
 }
 
@@ -645,20 +566,11 @@ function _new_feed_generator() {
 function _del_feed_generator() {
 	local _json
 
-	_json=$(curl -s -L -X POST 'https://bsky.social/xrpc/com.atproto.repo.deleteRecord' \
-		-H 'Content-Type: application/json' \
-		-H 'Accept: application/json' \
-		-K- \
-		--data-raw '{
+	_json=$(_httppost "${_ATPENDPOINT}"'/xrpc/com.atproto.repo.deleteRecord' '{
 			"repo": "'"${_DID}"'",
 			"collection": "app.bsky.feed.generator",
 			"rkey": "'"$1"'"
-		}' \
-		<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-	if echo "${_json}" | grep -q '"error":' ; then
-		echo "${_json}" >&2
-		return 1
-	fi
+		}')
 	echo "${_json}"
 }
 
@@ -670,17 +582,10 @@ function _list_records() {
 
 	while [[ ${_cursor} != "null" ]]
 		do
-		_json=$(curl -s -L -X GET 'https://bsky.social/xrpc/com.atproto.repo.listRecords?repo='"$1"'&collection='"$2"'&cursor='"${_cursor}" \
-			-H 'Accept: application/json' \
-			-K- <<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-		if echo "${_json}" | grep -q '"error":' ; then
-			echo "${_json}" >&2
-			return 1
-		fi
+		_json=$(_httpget "${_ATPENDPOINT}"'/xrpc/com.atproto.repo.listRecords?repo='"$1"'&collection='"$2"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
+		jq -c ".records[]" <<< "${_json}"
 		_cursor=$(echo "${_json}" | jq -r '.cursor')
-
-		echo "${_json}" | jq -c ".records[]"
 	done
 }
 
@@ -755,13 +660,15 @@ if [[ $1 == "login" ]]; then
 	_login
 	exit
 else
-	_refresh_session || exit
+	_get_session || exit
 fi
 
 case "$1" in
 	login)
+		_login
 		;;
 	refresh-session)
+		_refresh_session
 		;;
 	profile)
 		_profile "$([[ $# -ge 2 ]] && echo "$2" || echo "${_DID}")"

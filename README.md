@@ -2,7 +2,7 @@
 
 This shell calls Bluesky's API.
 
-`refreshJwt` export `~/.bskysession`.
+`JWT` export `~/.bskysession`.
 
 This script nees jq.
 
