@@ -525,6 +525,70 @@ function _post() {
 }
 
 ########
+# _feed_generator AT_URI
+########
+function _feed_generator() {
+	local _aturi _json _stdin=""
+
+	_aturi="$1"
+
+	_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.feed.getFeedGenerator?feed='"${_aturi}")
+	[[ -n ${_json} ]] || return 0
+	# jq -r '.items[] | [.uri, .subject.did, .subject.handle] | @tsv' | sed -e 's;.*app.bsky.graph.listitem/;;' <<< "${_json}"
+	echo "${_json}"
+}
+
+########
+# DESCRIPTION | _new_feed_generator ENDPOINT DISPLAY_NAME
+########
+function _new_feed_generator() {
+	local _json
+
+	_json=$(_httppost "${_ENDPOINT}"'/xrpc/com.atproto.repo.createRecord' '{
+			"repo": "'"${_DID}"'",
+			"collection": "app.bsky.feed.generator",
+			"validate": true,
+			"record": {
+				"$type": "app.bsky.feed.generator",
+				"did": "did:web:'"$1"'",
+				"displayName": "'"$(echo $2 | sed -z -e 's/\n$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\n/\\n/g' -e 's/\r//g')"'",
+				"description": "'"$(cat - | sed -z -e 's/\n$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\n/\\n/g' -e 's/\r//g')"'",
+				"createdAt": "'"$(date '+%Y-%m-%dT%H:%M:%S' --utc)Z"'"
+			}
+		}')
+	echo "${_json}"
+}
+
+########
+# _del_feed_generator RKEY
+########
+function _del_feed_generator() {
+	local _json
+
+	_json=$(_httppost "${_ENDPOINT}"'/xrpc/com.atproto.repo.deleteRecord' '{
+			"repo": "'"${_DID}"'",
+			"collection": "app.bsky.feed.generator",
+			"rkey": "'"$1"'"
+		}')
+	echo "${_json}"
+}
+
+########
+# _list_records USER_DID COLLECTION
+########
+function _list_records() {
+	local _json _cursor=""
+
+	while [[ ${_cursor} != "null" ]]
+		do
+		_json=$(_httpget "${_ENDPOINT}"'/xrpc/com.atproto.repo.listRecords?repo='"$1"'&collection='"$2"'&cursor='"${_cursor}")
+		[[ -n ${_json} ]] || return 0
+		jq -c ".records[]" <<< "${_json}"
+		_cursor=$(jq -r '.cursor' <<< "${_json}")
+	done
+}
+
+########
 # _usage
 ########
 function _usage() {
@@ -670,6 +734,18 @@ case "$1" in
 		;;
 	post)
 		if [[ $# -ge 2 ]]; then echo "$2"; else cat -; fi | _post
+		;;
+	feed-generator)
+		_feed_generator $2
+		;;
+	new-feed-generator)
+		cat - | _new_feed_generator "$2" "$3"
+		;;
+	del-feed-generator)
+		_del_feed_generator "$2"
+		;;
+	list-records)
+		_list_records "$2" "$3"
 		;;
 	*)
 		_usage
