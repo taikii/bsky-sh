@@ -92,6 +92,7 @@ function _httpget() {
 		else
 			_refresh_session
 			${FUNCNAME[0]} "$@"
+			return
 		fi
 	elif grep -q '"error":' <<< "${_json}" ; then
 		echo "${_json}" >&2
@@ -125,6 +126,7 @@ function _httppost() {
 		else
 			_refresh_session
 			${FUNCNAME[0]} "$@"
+			return
 		fi
 	elif grep -q '"error":' <<< "${_json}" ; then
 		echo "${_json}" >&2
