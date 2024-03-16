@@ -514,14 +514,54 @@ function _search_posts() {
 # TEXT | _post
 ########
 function _post() {
+	local _msg _facets
+
+	# Trimming
+	_msg=$(cat - | sed -z -e 's/\n$//' -e 's/\r//g')
+
+	_facets=$(awk -v 'RS=' --characters-as-bytes '
+		{
+			msg = $0
+			start = 0
+			while (match(msg, /https?:\/\/[-0-9a-zA-Z+&@#\/%?=~_|!:,.;\(\)]+/)) {
+				printf "{\"index\": {\"byteStart\": %s, \"byteEnd\": %s}, \"features\": [{\"$type\": \"app.bsky.richtext.facet#link\", \"uri\": \"%s\"}]},", start + RSTART - 1, start + RSTART + RLENGTH - 1, substr(msg, RSTART, RLENGTH)
+				msg = substr(msg, RSTART + RLENGTH)
+				start = start + RSTART + RLENGTH
+			}
+
+			msg = $0
+			start = 0
+			while (match(msg, /@[0-9a-zA-Z.]+/)) {
+				"'$(readlink -f $0)' profile "substr(msg, RSTART + 1, RLENGTH - 1) | getline did
+				did=substr(did, 1, index(did, "\t") - 1)
+				printf "{\"index\": {\"byteStart\": %s, \"byteEnd\": %s}, \"features\": [{\"$type\": \"app.bsky.richtext.facet#mention\", \"did\": \"%s\"}]},", start + RSTART - 1, start + RSTART + RLENGTH - 1, did
+				msg = substr(msg, RSTART + RLENGTH)
+				start = start + RSTART + RLENGTH
+			}
+
+			msg = $0
+			start = 0
+			while (match(msg, /\B#\S+/)) {
+				printf "{\"index\": {\"byteStart\": %s, \"byteEnd\": %s}, \"features\": [{\"$type\": \"app.bsky.richtext.facet#tag\", \"tag\": \"%s\"}]},", start + RSTART - 1, start + RSTART + RLENGTH - 1, substr(msg, RSTART + 1, RLENGTH - 1)
+				msg = substr(msg, RSTART + RLENGTH)
+				start = start + RSTART + RLENGTH
+			}
+		}' <<< ${_msg} | sed -e 's/,$//g');
+
+	# Escape
+	_msg=$(sed -z -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\n/\\n/g' <<< "${_msg}")
+
 	_httppost "${_ENDPOINT}"'/xrpc/com.atproto.repo.createRecord' '{
 			"repo": "'"${_DID}"'",
 			"collection": "app.bsky.feed.post",
 			"validate": true,
 			"record": {
 				"$type": "app.bsky.feed.post",
-				"text": "'"$(cat - | sed -z -e 's/\n$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\n/\\n/g' -e 's/\r//g')"'",
-				"createdAt": "'"$(date '+%Y-%m-%dT%H:%M:%S' --utc)Z"'"
+				"text": "'"${_msg}"'",
+				"createdAt": "'"$(date '+%Y-%m-%dT%H:%M:%S' --utc)Z"'",
+				"facets": [
+					'"${_facets}"'
+				]
 			}
 		}'
 }
