@@ -526,7 +526,7 @@ function _post() {
 			while (match(msg, /https?:\/\/[-0-9a-zA-Z+&@#\/%?=~_|!:,.;\(\)]+/)) {
 				printf "{\"index\": {\"byteStart\": %s, \"byteEnd\": %s}, \"features\": [{\"$type\": \"app.bsky.richtext.facet#link\", \"uri\": \"%s\"}]},", start + RSTART - 1, start + RSTART + RLENGTH - 1, substr(msg, RSTART, RLENGTH)
 				msg = substr(msg, RSTART + RLENGTH)
-				start = start + RSTART + RLENGTH
+				start = start + RSTART + RLENGTH - 1
 			}
 
 			msg = $0
@@ -536,7 +536,7 @@ function _post() {
 				did=substr(did, 1, index(did, "\t") - 1)
 				printf "{\"index\": {\"byteStart\": %s, \"byteEnd\": %s}, \"features\": [{\"$type\": \"app.bsky.richtext.facet#mention\", \"did\": \"%s\"}]},", start + RSTART - 1, start + RSTART + RLENGTH - 1, did
 				msg = substr(msg, RSTART + RLENGTH)
-				start = start + RSTART + RLENGTH
+				start = start + RSTART + RLENGTH - 1
 			}
 
 			msg = $0
@@ -544,7 +544,7 @@ function _post() {
 			while (match(msg, /\B#\S+/)) {
 				printf "{\"index\": {\"byteStart\": %s, \"byteEnd\": %s}, \"features\": [{\"$type\": \"app.bsky.richtext.facet#tag\", \"tag\": \"%s\"}]},", start + RSTART - 1, start + RSTART + RLENGTH - 1, substr(msg, RSTART + 1, RLENGTH - 1)
 				msg = substr(msg, RSTART + RLENGTH)
-				start = start + RSTART + RLENGTH
+				start = start + RSTART + RLENGTH - 1
 			}
 		}' <<< ${_msg} | sed -e 's/,$//g');
 
