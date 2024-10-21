@@ -6,7 +6,7 @@ _ACCESS_JWT=
 _DID=
 _ENDPOINT='https://public.api.bsky.app'
 
-_SERVICEENDPOINT='https://public.api.bsky.app'
+_SERVICEENDPOINT='https://bsky.social'
 
 ########
 # _get_session
