@@ -4,9 +4,7 @@ set -euo pipefail
 _REFRESH_JWT=
 _ACCESS_JWT=
 _DID=
-_ENDPOINT='https://public.api.bsky.app'
-
-_SERVICEENDPOINT='https://bsky.social'
+_ENDPOINT='https://bsky.social'
 
 ########
 # _get_session
@@ -16,7 +14,7 @@ function _get_session() {
 		_login
 	fi
 
-	read _REFRESH_JWT _ACCESS_JWT _DID _ENDPOINT < ~/.bskysession
+	read _REFRESH_JWT _ACCESS_JWT _DID < ~/.bskysession
 
 	if [[ -z ${_REFRESH_JWT} ]]; then
 		_login
@@ -39,7 +37,7 @@ function _login() {
 			echo
 		}
 
-	_json=$(curl -s -X POST "${_SERVICEENDPOINT}"'/xrpc/com.atproto.server.createSession' \
+	_json=$(curl -s -X POST "${_ENDPOINT}"'/xrpc/com.atproto.server.createSession' \
 		-H "Content-Type: application/json" \
 		-d @- <<< '{"identifier": "'"${BSKY_HANDLE}"'", "password": "'"${BSKY_PASSWORD}"'"}')
 	if grep -q '"error":' <<< "${_json}" ; then
@@ -47,8 +45,8 @@ function _login() {
 		return 1
 	fi
 
-	jq -r '"\(.refreshJwt) \(.accessJwt) \(.did) \(.didDoc.service[0].serviceEndpoint)"' <<< "${_json}" > ~/.bskysession
-	read _REFRESH_JWT _ACCESS_JWT _DID _ENDPOINT < ~/.bskysession
+	jq -r '"\(.refreshJwt) \(.accessJwt) \(.did)"' <<< "${_json}" > ~/.bskysession
+	read _REFRESH_JWT _ACCESS_JWT _DID < ~/.bskysession
 }
 
 ########
@@ -61,7 +59,7 @@ function _refresh_session() {
 		return
 	fi
 
-	_json=$(curl -s -L -X POST "${_SERVICEENDPOINT}"'/xrpc/com.atproto.server.refreshSession' \
+	_json=$(curl -s -L -X POST "${_ENDPOINT}"'/xrpc/com.atproto.server.refreshSession' \
 		-H 'Accept: application/json' \
 		-K- <<< "Header = \"Authorization: Bearer ${_REFRESH_JWT}\"")
 	if grep -q '"error":' <<< "${_json}" ; then
@@ -69,8 +67,8 @@ function _refresh_session() {
 		return 1
 	fi
 
-	jq -r '"\(.refreshJwt) \(.accessJwt) \(.did) \(.didDoc.service[0].serviceEndpoint)"' <<< "${_json}" > ~/.bskysession
-	read _REFRESH_JWT _ACCESS_JWT _DID _ENDPOINT < ~/.bskysession
+	jq -r '"\(.refreshJwt) \(.accessJwt) \(.did)"' <<< "${_json}" > ~/.bskysession
+	read _REFRESH_JWT _ACCESS_JWT _DID < ~/.bskysession
 }
 
 ########
@@ -85,6 +83,7 @@ function _httpget() {
 		-H 'Accept: application/json' \
 		-K- \
 		<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
+echo "_json=${_json}" 1>&2
 	if grep -q '"error":"ExpiredToken"' <<< "${_json}" ; then
 		if [[ ${FUNCNAME[0]} == ${FUNCNAME[1]} ]]; then
 			echo "${_json}" >&2
@@ -473,8 +472,29 @@ function _user_feed() {
 	_user="$1"
 
 	while [[ ${_cursor} != "null" ]]
-		do
+	do
 		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.feed.getAuthorFeed?actor='"${_user}"'&cursor='"${_cursor}")
+		[[ -n ${_json} ]] || return 0
+		jq -r '.feed[] | [.post.uri, .post.record.createdAt, .post.author.handle, .post.record.text] | @tsv' <<< "${_json}"
+		_cursor=$(jq -r '.cursor' <<< "${_json}")
+
+		if [[ -t 0 ]] && [[ ${_cursor} != "null" ]]; then
+			read -p ": "
+		else
+			break
+		fi
+	done
+}
+
+########
+# _timeline
+########
+function _timeline() {
+	local _json _cursor=""
+
+	while [[ ${_cursor} != "null" ]]
+	do
+		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.feed.getTimeline?cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
 		jq -r '.feed[] | [.post.uri, .post.record.createdAt, .post.author.handle, .post.record.text] | @tsv' <<< "${_json}"
 		_cursor=$(jq -r '.cursor' <<< "${_json}")
@@ -496,7 +516,7 @@ function _search_posts() {
 	_q="$1"
 
 	while [[ ${_cursor} != "null" ]]
-		do
+	do
 		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.feed.searchPosts?q='"$(jq -Rr '@uri' <<< "${_q}")"'&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
 		jq -r '.posts[] | [.uri, .record.createdAt, .author.handle, .record.text] | @tsv' <<< "${_json}"
@@ -620,7 +640,10 @@ function _usage() {
 		./bsky.sh user-feed HANDLE
 			uri createdAt handle text
 
-		./bsky.sh search-posts QUERY
+		./bsky.sh timeline
+			uri createdAt handle text
+
+		./bsky.sh search QUERY
 			uri createdAt handle text
 
 		./bsky.sh post TEXT
@@ -706,6 +729,9 @@ case "$1" in
 		;;
 	user-feed)
 		_user_feed "$2"
+		;;
+	timeline)
+		_timeline
 		;;
 	search)
 		_search_posts "$2"
