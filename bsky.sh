@@ -4,9 +4,9 @@ set -euo pipefail
 _REFRESH_JWT=
 _ACCESS_JWT=
 _DID=
-_ENDPOINT='https://bsky.social'
+_ENDPOINT='https://public.api.bsky.app'
 
-_SERVICEENDPOINT='https://bsky.social'
+_SERVICEENDPOINT='https://public.api.bsky.app'
 
 ########
 # _get_session
