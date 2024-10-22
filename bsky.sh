@@ -83,7 +83,6 @@ function _httpget() {
 		-H 'Accept: application/json' \
 		-K- \
 		<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
-echo "_json=${_json}" 1>&2
 	if grep -q '"error":"ExpiredToken"' <<< "${_json}" ; then
 		if [[ ${FUNCNAME[0]} == ${FUNCNAME[1]} ]]; then
 			echo "${_json}" >&2
