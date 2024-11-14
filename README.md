@@ -24,7 +24,7 @@ This script nees jq.
   did handle displayName description
 
 ./bsky.sh blocks
-  rdkey did handle displayName description
+  rkey did handle displayName description
 
 ./bsky.sh mutes
   did handle displayName description
@@ -37,29 +37,12 @@ This script nees jq.
 
 ./bsky.sh addmember LIST_URI USER_DID
 USER_DIDs | ./bsky.sh addmember LIST_URI
-  rkey did
 
 ./bsky.sh delmember LIST_URI USER_DID
 USER_DIDs | ./bsky.sh delmember LIST_URI
 
 ./bsky.sh delmember-rkey LIST_MEMBER_RKEY 
-LIST_MEMBER_RKEYs | ./bsky.sh delmember_rkey
-
-./bsky.sh block USER_DID 
-USER_DIDs | ./bsky.sh block
-  rkey did
-
-./bsky.sh unblock USER_DID 
-USER_DIDs | ./bsky.sh unblock
-
-./bsky.sh unblock-rkey RKEY 
-RKEYs | ./bsky.sh unblock-rkey
-
-./bsky.sh mute USER_DID 
-USER_DIDs | ./bsky.sh mute
-
-./bsky.sh unmute USER_DID 
-USER_DIDs | ./bsky.sh unmute
+LIST_MEMBER_RKEYs | ./bsky.sh delmember-rkey
 
 ./bsky.sh feed FEED_URI
   uri createdAt handle text
@@ -67,9 +50,21 @@ USER_DIDs | ./bsky.sh unmute
 ./bsky.sh list-feed LIST_URI
   uri createdAt handle text
 
+./bsky.sh feed FEED_URI
+  uri createdAt handle text
+
 ./bsky.sh user-feed HANDLE
+  uri createdAt handle text
+
+./bsky.sh timeline
+  uri createdAt handle text
+
+./bsky.sh search QUERY
   uri createdAt handle text
 
 ./bsky.sh post TEXT
 TEXT | ./bsky.sh post
+
+./bsky.sh delete-post POST_RKEY 
+POST_RKEYs | ./bsky.sh delete-post
 ```
