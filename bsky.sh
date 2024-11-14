@@ -463,16 +463,23 @@ function _list_feed() {
 }
 
 ########
-# _user_feed HANDLE 
+# _user_feed HANDLE [FILTER]
+#   FILTER: posts_with_replies / posts_with_media
 ########
 function _user_feed() {
-	local _user _json _cursor=""
+	local _user _filter _json _cursor=""
 
+	if [[ $1 == "did:"* ]]; then
 	_user="$1"
+	else
+		_user="$(_profile "$1" | cut -f 1)"
+	fi
+
+	_filter="${2:-""}"
 
 	while [[ ${_cursor} != "null" ]]
 	do
-		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.feed.getAuthorFeed?actor='"${_user}"'&cursor='"${_cursor}")
+		_json=$(_httpget "${_ENDPOINT}"'/xrpc/app.bsky.feed.getAuthorFeed?actor='"${_user}"'&filter='"${_filter}"'&includePins=false&cursor='"${_cursor}")
 		[[ -n ${_json} ]] || return 0
 		jq -r '.feed[] | [.post.uri, .post.record.createdAt, .post.author.handle, .post.record.text] | @tsv' <<< "${_json}"
 		_cursor=$(jq -r '.cursor' <<< "${_json}")
@@ -586,6 +593,22 @@ function _post() {
 }
 
 ########
+# RKEYs | _delete_post
+########
+function _delete_post() {
+	local _rkey _json
+
+	while read _rkey _
+	do
+		_httppost "${_ENDPOINT}"'/xrpc/com.atproto.repo.deleteRecord' '{
+				"repo": "'"${_DID}"'",
+				"collection": "app.bsky.feed.post",
+				"rkey": "'"${_rkey}"'"
+			}'
+	done < <(cat -)
+}
+
+########
 # _usage
 ########
 function _usage() {
@@ -625,7 +648,7 @@ function _usage() {
 		USER_DIDs | ./bsky.sh delmember LIST_URI
 
 		./bsky.sh delmember-rkey LIST_MEMBER_RKEY 
-		LIST_MEMBER_RKEYs | ./bsky.sh delmember_rkey
+		LIST_MEMBER_RKEYs | ./bsky.sh delmember-rkey
 
 		./bsky.sh feed FEED_URI
 			uri createdAt handle text
@@ -647,6 +670,9 @@ function _usage() {
 
 		./bsky.sh post TEXT
 		TEXT | ./bsky.sh post
+
+		./bsky.sh delete-post POST_RKEY 
+		POST_RKEYs | ./bsky.sh delete-post
 	EOS
 }
 
@@ -727,7 +753,7 @@ case "$1" in
 		_list_feed "$2"
 		;;
 	user-feed)
-		_user_feed "$2"
+		_user_feed "${@:2}"
 		;;
 	timeline)
 		_timeline
@@ -737,6 +763,9 @@ case "$1" in
 		;;
 	post)
 		if [[ $# -ge 2 ]]; then echo "$2"; else cat -; fi | _post
+		;;
+	delete-post)
+		if [[ $# -ge 2 ]]; then echo "$2"; else cat -; fi | _delete_post
 		;;
 	*)
 		_usage
