@@ -61,7 +61,7 @@ function _refresh_session() {
 
 	_json=$(curl -s -L -X POST "${_ENDPOINT}"'/xrpc/com.atproto.server.refreshSession' \
 		-H 'Accept: application/json' \
-		--config - <<< "Header = \"Authorization: Bearer ${_REFRESH_JWT}\"")
+		--config - <<< "header = \"Authorization: Bearer ${_REFRESH_JWT}\"")
 	if grep -q '"error":' <<< "${_json}" ; then
 		echo "${_json}" >&2
 		return 1
@@ -82,7 +82,7 @@ function _httpget() {
 	_json=$(curl -s -L -X GET "${_uri}" \
 		-H 'Accept: application/json' \
 		--config - \
-		<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
+		<<< "header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 	if grep -q '"error":"ExpiredToken"' <<< "${_json}" ; then
 		if [[ ${FUNCNAME[0]} == ${FUNCNAME[1]} ]]; then
 			echo "${_json}" >&2
@@ -116,7 +116,7 @@ function _httppost() {
 		-H 'Accept: application/json' \
 		--config - \
 		--data-raw "${_data}" \
-		<<< "Header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
+		<<< "header = \"Authorization: Bearer ${_ACCESS_JWT}\"")
 	if grep -q '"error":"ExpiredToken"' <<< "${_json}" ; then
 		if [[ ${FUNCNAME[0]} == ${FUNCNAME[1]} ]]; then
 			echo "${_json}" >&2
